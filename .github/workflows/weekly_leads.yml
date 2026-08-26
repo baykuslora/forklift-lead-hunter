@@ -5,9 +5,12 @@ on:
     - cron: '30 5 * * 1'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   run-pipeline:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
     - name: Repoyu Klonla
