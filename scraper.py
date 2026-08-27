@@ -30,18 +30,22 @@ class JobLeadScraper:
         })
 
     def scrape_google_jobs(self):
-        """Kariyer.net, LinkedIn, Eleman.net ve Secretcv ilanlarını SerpApi üzerinden çeker."""
+        """Türkiye genelindeki forklift ilanlarını Google Jobs üzerinden çeker."""
         if not self.serpapi_key:
             print("[-] SERPAPI_KEY bulunamadı!")
             return
 
         print("[+] Google Jobs motoru taranıyor...")
         
+        # Türkiye'nin sanayi ve lojistik merkezlerine göre genişletilmiş sorgular
         queries = [
-            "forklift operatörü",
-            "forklift şoförü",
-            "reach truck operatörü",
-            "depo forklift"
+            "forklift operatörü İstanbul",
+            "forklift şoförü Kocaeli Gebze",
+            "forklift operatörü Bursa",
+            "forklift operatörü İzmir",
+            "forklift operatörü Ankara",
+            "reach truck operatörü Türkiye",
+            "depo forklift operatörü Türkiye"
         ]
 
         for q in queries:
@@ -49,24 +53,18 @@ class JobLeadScraper:
                 params = {
                     "engine": "google_jobs",
                     "q": q,
-                    "location": "Turkey",
                     "hl": "tr",
-                    "gl": "tr",
                     "api_key": self.serpapi_key
                 }
                 res = requests.get("https://serpapi.com/search", params=params, timeout=20)
                 data = res.json()
 
-                if res.status_code != 200:
-                    print(f"[-] SerpApi Yanıt Hatası ({res.status_code}): {data.get('error', res.text[:120])}")
-                    continue
-
-                if "error" in data:
-                    print(f"[-] SerpApi Hatası: {data['error']}")
+                if res.status_code != 200 or "error" in data:
+                    print(f"[-] Hata ({q}): {data.get('error', res.text[:100])}")
                     continue
 
                 jobs = data.get("jobs_results", [])
-                print(f"[+] '{q}' sorgusu için {len(jobs)} ilan çekildi.")
+                print(f"[+] '{q}' sorgusundan {len(jobs)} ilan çekildi.")
                 
                 for j in jobs:
                     title = j.get("title", "Forklift Operatörü")
@@ -84,7 +82,7 @@ class JobLeadScraper:
                     self._add_lead("Google Jobs", company, title, location, link, f"{desc} {company}")
 
             except Exception as e:
-                print(f"[-] Hata ({q}): {e}")
+                print(f"[-] İstek Hatası ({q}): {e}")
 
         print(f"[✓] Tarama tamamlandı. Toplam bulunan lead: {len(self.raw_leads)}")
 
