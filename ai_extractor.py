@@ -30,12 +30,12 @@ def format_phone_3322(phone_raw):
     return ""
 
 def call_gemini_rest(prompt: str) -> str:
-    """SDK bağımlılığı olmadan doğrudan Google REST API üzerinden çalışır."""
+    """SDK ve sürüm uyumsuzluklarını önlemek için doğrudan Google REST API kullanır."""
     if not GEMINI_API_KEY:
+        print("[-] GEMINI_API_KEY bulunamadı!")
         return ""
 
-    # Kullanılabilir güncel modeller sırayla denenir
-    models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-pro"]
+    models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
     
     for model in models:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
@@ -48,11 +48,15 @@ def call_gemini_rest(prompt: str) -> str:
             }
         }
         try:
-            resp = requests.post(url, headers=headers, json=payload, timeout=20)
+            resp = requests.post(url, headers=headers, json=payload, timeout=25)
             if resp.status_code == 200:
                 data = resp.json()
+                print(f"[✓] Gemini API ({model}) ile başarıyla iletişim kuruldu.")
                 return data["candidates"][0]["content"]["parts"][0]["text"]
-        except Exception:
+            else:
+                print(f"[-] {model} hata kodu: {resp.status_code}")
+        except Exception as e:
+            print(f"[-] {model} bağlantı hatası: {e}")
             continue
 
     return ""
@@ -74,7 +78,7 @@ Her bir arama sonucunu incele ve JSON formatında bir liste döndür:
 5. "source_website": İlanın alındığı ana platform adı (KARİYER.NET, ELEMAN.NET, İŞİN OLSUN, LINKEDIN, INDEED, SECRETCV).
 6. "job_url": Verilen linki aynen koru.
 
-JSON Şeması:
+JSON Formatı:
 [
   {{
     "is_valid_forklift_job": true,
@@ -92,7 +96,7 @@ JSON Şeması:
 
     response_text = call_gemini_rest(prompt)
     if not response_text:
-        print("[-] Gemini REST API yanıt vermedi.")
+        print("[-] Yapay zeka yanıt veremedi.")
         return []
 
     try:
@@ -121,9 +125,9 @@ JSON Şeması:
                 "job_url": url
             })
 
-        print(f"[✓] REST AI Analizi: {len(raw_search_results)} ham sonuçtan {len(valid_leads)} temiz kurumsal lead üretildi.")
+        print(f"[✓] AI Analizi: {len(raw_search_results)} ham sonuçtan {len(valid_leads)} net kurumsal lead çıkarıldı.")
         return valid_leads
 
     except Exception as e:
-        print(f"[-] JSON parse hatası: {e}")
+        print(f"[-] JSON dönüştürme hatası: {e}")
         return []
