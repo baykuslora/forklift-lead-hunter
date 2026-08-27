@@ -1,9 +1,9 @@
 import os
 import re
+from urllib.parse import urlparse
 import requests
 from enricher import extract_tr_phone
 
-# Türkiye'nin 81 İli
 TURKISH_81_CITIES = [
     "ADANA", "ADIYAMAN", "AFYONKARAHİSAR", "AĞRI", "AMASYA", "ANKARA", "ANTALYA", "ARTVİN", "AYDIN", 
     "BALIKESİR", "BİLECİK", "BİNGÖL", "BİTLİS", "BOLU", "BURDUR", "BURSA", "ÇANAKKALE", "ÇANKIRI", 
@@ -11,13 +11,12 @@ TURKISH_81_CITIES = [
     "GAZİANTEP", "GİRESUN", "GÜMÜŞHANE", "HAKKARİ", "HATAY", "ISPARTA", "MERSİN", "İSTANBUL", 
     "İZMİR", "KARS", "KASTAMONU", "KAYSERİ", "KIRKLARELİ", "KIRŞEHİR", "KOCAELİ", "KONYA", 
     "KÜTAHYA", "MALATYA", "MANİSA", "KAHRAMANMARAŞ", "MARDİN", "MUĞLA", "MUŞ", "NEVŞEHİR", 
-    "NİĞDE", "ORDU", "RİZE", "SAKARYA", "SAMSUN",    "SİİRT", "SİNOP", "SİVAS", "TEKİRDAĞ", "TOKAT", "TRABZON", "TUNCELİ", 
+    "NİĞDE", "ORDU", "RİZE", "SAKARYA", "SAMSUN", "SİİRT", "SİNOP", "SİVAS", "TEKİRDAĞ", "TOKAT", "TRABZON", "TUNCELİ", 
     "ŞANLIURFA", "UŞAK", "VAN", "YOZGAT", "ZONGULDAK", "AKSARAY", "BAYBURT", 
     "KARAMAN", "KIRIKKALE", "BATMAN", "ŞIRNAK", "BARTIN", "ARDAHAN", "IĞDIR", 
     "YALOVA", "KARABÜK", "KİLİS", "OSMANİYE", "DÜZCE"
 ]
 
-# Önemli Sanayi ve Depolama İlçelerinin Bağlı Oldukları İller
 DISTRICT_MAP = {
     "GEBZE": "KOCAELİ", "ÇAYIROVA": "KOCAELİ", "DİLOVASI": "KOCAELİ", "DARICA": "KOCAELİ", 
     "KÖRFEZ": "KOCAELİ", "İZMİT": "KOCAELİ", "GÖLCÜK": "KOCAELİ", "KARTEPE": "KOCAELİ", "BAŞİSKELE": "KOCAELİ",
@@ -47,58 +46,69 @@ class JobLeadScraper:
         self.seen_signatures = set()
         self.serpapi_key = os.getenv("SERPAPI_KEY", "").strip()
 
-    def _is_category_page(self, url):
-        """Toplu arama, etiket veya kategori sayfalarını eler."""
+    def _is_invalid_page(self, url):
         url_lower = url.lower()
         bad_patterns = [
             r'/is-ilanlari(/|$|\?)',
             r'/q-.*-is-ilanlari',
+            r'/pozisyonlar/',
             r'/jobs/search',
             r'/jobs/kategori',
             r'/arama',
             r'search\?',
-            r'/tag/'
+            r'/tag/',
+            r'/nedir',
+            r'/maas',
+            r'/cv/',
+            r'/ozgecmis'
         ]
         return any(re.search(p, url_lower) for p in bad_patterns)
 
+    def _extract_source_website(self, url):
+        domain = urlparse(url).netloc.lower()
+        domain = re.sub(r'^www\.', '', domain)
+        if "kariyer.net" in domain:
+            return "KARİYER.NET"
+        elif "eleman.net" in domain:
+            return "ELEMAN.NET"
+        elif "linkedin.com" in domain:
+            return "LINKEDIN"
+        elif "indeed.com" in domain:
+            return "INDEED"
+        elif "isinolsun.com" in domain:
+            return "İŞİN OLSUN"
+        elif "secretcv.com" in domain:
+            return "SECRETCV"
+        return tr_upper(domain)
+
     def _extract_city(self, full_text):
-        """Metinden 81 il veya sanayi ilçesi eşleştirmesi yapar."""
         text_upper = tr_upper(full_text)
-        
-        # 1. Önce kritik sanayi ilçelerini kontrol et
         for dist, prov in DISTRICT_MAP.items():
             if re.search(r'\b' + re.escape(dist) + r'\b', text_upper):
                 return prov
-                
-        # 2. 81 ilin tamamını kontrol et
         for city in TURKISH_81_CITIES:
             if re.search(r'\b' + re.escape(city) + r'\b', text_upper):
                 return city
-                
         return ""
 
     def _extract_clean_company(self, raw_title, snippet, url):
-        """İlan başlığından saf şirket adını filtreler."""
-        if self._is_category_page(url):
+        if self._is_invalid_page(url):
             return ""
 
         clean_title = raw_title
-        clean_title = re.sub(r'\s*\|\s*(Kariyer\.net|LinkedIn|Eleman\.net|Indeed|Secretcv|İşinolsun).*$', '', clean_title, flags=re.I)
-        clean_title = re.sub(r'\s*-\s*(Kariyer\.net|LinkedIn|Eleman\.net|Indeed|Secretcv|İşinolsun).*$', '', clean_title, flags=re.I)
+        clean_title = re.sub(r'\s*\|\s*(Kariyer\.net|LinkedIn|Eleman\.net|Indeed|Secretcv|İşinolsun|24saatteis).*$', '', clean_title, flags=re.I)
+        clean_title = re.sub(r'\s*-\s*(Kariyer\.net|LinkedIn|Eleman\.net|Indeed|Secretcv|İşinolsun|24saatteis).*$', '', clean_title, flags=re.I)
 
-        # LinkedIn özel yapısı: "Firma Adı hiring Forklift..."
+        # LinkedIn: "Firma Adı hiring Forklift..."
         m_linkedin = re.search(r'^(.*?)\s+(?:hiring|is hiring)\s+(.*)$', clean_title, flags=re.I)
         if m_linkedin:
-            cand = m_linkedin.group(1).strip()
-            if len(cand) >= 2:
-                return tr_upper(cand)
+            return tr_upper(m_linkedin.group(1).strip())
 
-        # Başlığı ayraçlardan böl
         parts = [p.strip() for p in re.split(r'\s*[-–|•:]\s*', clean_title) if p.strip()]
-        job_words = [
+        job_keywords = [
             "forklift", "reach truck", "reachtruck", "istif", "operatör", "operatörü", 
             "şoför", "şoförü", "sürücü", "depo", "eleman", "elemanı", "görevlisi", 
-            "personel", "sevkiyat", "yükleme", "boşaltma", "lojistik elemanı", "paketleme",
+            "personel", "sevkiyat", "yükleme", "boşaltma", "lojistik", "paketleme",
             "makine operatörü", "iş ilanı", "iş ilanları", "aranıyor", "acil"
         ]
 
@@ -107,21 +117,17 @@ class JobLeadScraper:
             p_clean = p.strip()
             p_upper = tr_upper(p_clean)
 
-            # Tarihleri filtrele (Örn: 21 Ağustos 2026)
             if re.search(r'\d{1,2}\s+(OCAK|ŞUBAT|MART|NİSAN|MAYIS|HAZİRAN|TEMMUZ|AĞUSTOS|EYLÜL|EKİM|KASIM|ARALIK)', p_upper):
                 continue
-            # Jenerik kelimeleri atla
-            if p_upper in ["GÜNCEL İŞ FIRSATLARI", "İŞ FIRSATLARI", "İŞ İLANI", "İŞ İLANLARI", "KADIN", "ERKEK", "ENGELLİ", "ACİL", "TAM ZAMANLI"]:
+            if p_upper in ["GÜNCEL İŞ FIRSATLARI", "İŞ FIRSATLARI", "İŞ İLANI", "İŞ İLANLARI", "KADIN", "ERKEK", "ENGELLİ", "ACİL", "TAM ZAMANLI", "POTANSİYEL FİRMA"]:
                 continue
-            # Sadece şehir/ilçe olan parçayı atla
             if p_upper in TURKISH_81_CITIES or p_upper in DISTRICT_MAP or p_upper in ["TÜRKİYE", "MARMARA"]:
                 continue
 
             p_lower = p_clean.lower()
-            job_word_count = sum(1 for jw in job_words if jw in p_lower)
+            job_word_count = sum(1 for jw in job_keywords if jw in p_lower)
 
-            # Kurumsal unvan ekleri
-            has_corp_suffix = any(s in p_upper for s in ["A.Ş", "AŞ", "LTD", "ŞTİ", "SANAYİ", "SAN.", "TİC.", "TİCARET", "HOLDİNG", "GROUP", "GRUP", "LOJİSTİK", "FABRİKA", "AMBALAJ", "GIDA", "KİMYA", "TEKSTİL", "OTOMOTİV", "METAL", "PLASTİK"])
+            has_corp_suffix = any(s in p_upper for s in ["A.Ş", "AŞ", "LTD", "ŞTİ", "SANAYİ", "SAN.", "TİC.", "TİCARET", "HOLDİNG", "GROUP", "GRUP", "LOJİSTİK", "FABRİKA"])
             
             if has_corp_suffix:
                 clean_p = p_clean
@@ -143,16 +149,13 @@ class JobLeadScraper:
             print("[-] SERPAPI_KEY bulunamadı!")
             return
 
-        print("[+] LinkedIn, Indeed, Kariyer.net, Eleman.net, Secretcv taranıyor...")
-
-        # Kategori sayfalarını atlayıp DOĞRUDAN TEKİL İLANLARI hedefleyen arama sorguları
+        print("[+] İş ilanları taranıyor...")
         queries = [
-            '("forklift operatörü" OR "reach truck operatörü") site:kariyer.net inurl:is-ilani',
+            '("forklift operatörü" OR "reach truck operatörü") site:kariyer.net inurl:is-ilani -inurl:pozisyonlar',
             '("forklift operatörü" OR "reach truck") site:tr.linkedin.com inurl:"/jobs/view"',
             '("forklift operatörü" OR "forklift şoförü") site:eleman.net inurl:is-ilani',
-            '("forklift operatörü" OR "reach truck" OR "istif makinesi") site:tr.indeed.com inurl:viewjob',
-            '("forklift operatörü" OR "istif makinesi") site:secretcv.com inurl:ilan',
-            '("forklift operatörü" OR "depo forklift") site:isinolsun.com inurl:is-ilani'
+            '("forklift operatörü" OR "reach truck") site:tr.indeed.com inurl:viewjob',
+            '("forklift operatörü") site:isinolsun.com inurl:is-ilani'
         ]
 
         for q in queries:
@@ -162,7 +165,7 @@ class JobLeadScraper:
                     "q": q,
                     "hl": "tr",
                     "gl": "tr",
-                    "num": "20",
+                    "num": "25",
                     "api_key": self.serpapi_key
                 }
                 res = requests.get("https://serpapi.com/search", params=params, timeout=15)
@@ -177,8 +180,8 @@ class JobLeadScraper:
                         company = self._extract_clean_company(raw_title, snippet, link)
                         city = self._extract_city(full_text)
                         phone = extract_tr_phone(full_text)
+                        source_site = self._extract_source_website(link)
 
-                        # Firma adı veya ili bulunamayan ilanları listeye alma
                         if not company or len(company) < 2 or not city:
                             continue
 
@@ -191,12 +194,13 @@ class JobLeadScraper:
                             "company_name": company,
                             "city": city,
                             "direct_phone": phone,
+                            "source_website": source_site,
                             "job_url": link
                         })
             except Exception as e:
                 print(f"[-] Arama sorgusu hatası: {e}")
 
-        print(f"[✓] Başarıyla ayıklanan saf tekil lead sayısı: {len(self.raw_leads)}")
+        print(f"[✓] Temiz tekil ilan sayısı: {len(self.raw_leads)}")
 
     def run_all(self):
         self.scrape_all_sources()
