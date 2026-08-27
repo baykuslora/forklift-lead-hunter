@@ -2,11 +2,10 @@ import re
 import requests
 
 def extract_tr_phone(text):
-    """Metin içindeki geçerli Türkiye sabit (2XX, 3XX, 4XX), mobil (5XX) ve 850/444 numaralarını ayıklar."""
+    """Metin içindeki geçerli sabit ve mobil Türkiye telefon numaralarını yakalar."""
     if not text:
         return ""
     
-    # 05XX, 02XX, 03XX, 04XX veya 0850 ile başlayan 10 veya 11 haneli kalıplar
     patterns = [
         r'(?:(?:\+?90|0)\s*)?([2-5]\d{2})[\s.-]*(\d{3})[\s.-]*(\d{2})[\s.-]*(\d{2})',
         r'(?:(?:\+?90|0)\s*)?(850)[\s.-]*(\d{3})[\s.-]*(\d{2})[\s.-]*(\d{2})',
@@ -25,6 +24,7 @@ def extract_tr_phone(text):
     return ""
 
 def find_company_phone_online(company_name, city, serpapi_key):
+    """İlanda telefon yoksa firmanın kurumsal santral/iletişim numarasını Google'dan bulur."""
     if not serpapi_key or not company_name or len(company_name) < 3:
         return ""
     
