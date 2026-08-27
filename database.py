@@ -13,7 +13,6 @@ class LeadDatabase:
                 CREATE TABLE IF NOT EXISTS leads (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     company_name TEXT,
-                    job_title TEXT,
                     city TEXT,
                     direct_phone TEXT,
                     job_url TEXT,
@@ -31,10 +30,9 @@ class LeadDatabase:
             for lead in raw_leads:
                 company = (lead.get("company_name") or "").strip()
                 city = (lead.get("city") or "").strip()
-                if not company or len(company) < 2:
+                if not company or len(company) < 2 or not city:
                     continue
 
-                # Son 45 günde aynı firma ve şehir varsa mükerrer say ve atla
                 cursor.execute("""
                     SELECT id FROM leads 
                     WHERE LOWER(company_name) = LOWER(?) AND LOWER(city) = LOWER(?) AND created_at >= ?
@@ -42,11 +40,10 @@ class LeadDatabase:
                 
                 if not cursor.fetchone():
                     cursor.execute("""
-                        INSERT INTO leads (company_name, job_title, city, direct_phone, job_url, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?)
+                        INSERT INTO leads (company_name, city, direct_phone, job_url, created_at)
+                        VALUES (?, ?, ?, ?, ?)
                     """, (
                         company,
-                        lead.get("job_title", "Forklift Operatörü"),
                         city,
                         lead.get("direct_phone", ""),
                         lead.get("job_url", ""),
@@ -55,11 +52,10 @@ class LeadDatabase:
                     new_leads.append(lead)
             conn.commit()
 
-        print(f"[*] Havuza {len(new_leads)} adet yeni tekil firma eklendi.")
+        print(f"[*] Veritabanına {len(new_leads)} adet yeni tekil firma eklendi.")
         return new_leads
 
     def get_all_active_leads(self, retention_days=45):
-        """Son 45 günün birikmiş tüm tekil master havuzunu getirir."""
         cutoff = datetime.now() - timedelta(days=retention_days)
         active_leads = []
 
@@ -67,7 +63,7 @@ class LeadDatabase:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT company_name, job_title, city, direct_phone, job_url 
+                SELECT company_name, city, direct_phone, job_url 
                 FROM leads 
                 WHERE created_at >= ?
                 GROUP BY LOWER(company_name), LOWER(city)
