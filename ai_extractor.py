@@ -41,10 +41,14 @@ def extract_leads_with_ai(raw_search_results: list) -> list:
     if not raw_search_results:
         return []
 
-    model = genai.GenerativeModel(
-        model_name="gemini-1.5-flash",
-        generation_config={"response_mime_type": "application/json"}
-    )
+    # Model isimleri sırasıyla denenir
+    candidate_models = [
+        "gemini-1.5-flash-latest",
+        "gemini-1.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-pro-latest",
+        "gemini-pro"
+    ]
 
     prompt = f"""
 Sen B2B satış odaklı bir veri analiz uzmanısın.
@@ -75,10 +79,28 @@ JSON Şeması:
 {json.dumps(raw_search_results, ensure_ascii=False, indent=2)}
 """
 
+    response_text = None
+    for model_name in candidate_models:
+        try:
+            model = genai.GenerativeModel(
+                model_name=model_name,
+                generation_config={"response_mime_type": "application/json"}
+            )
+            response = model.generate_content(prompt)
+            if response and response.text:
+                response_text = response.text
+                print(f"[✓] Gemini modeli başarıyla çalıştı: {model_name}")
+                break
+        except Exception as err:
+            print(f"[-] {model_name} denendi, hata: {err}")
+            continue
+
+    if not response_text:
+        print("[-] Hiçbir Gemini modeli yanıt veremedi.")
+        return []
+
     try:
-        response = model.generate_content(prompt)
-        parsed_data = json.loads(response.text)
-        
+        parsed_data = json.loads(response_text)
         valid_leads = []
         for item in parsed_data:
             if not item.get("is_valid_forklift_job"):
@@ -107,5 +129,5 @@ JSON Şeması:
         return valid_leads
 
     except Exception as e:
-        print(f"[-] Gemini AI çıkarma hatası: {e}")
+        print(f"[-] JSON parse hatası: {e}")
         return []
