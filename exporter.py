@@ -4,7 +4,6 @@ import pandas as pd
 from datetime import datetime
 
 def tr_upper(text):
-    """Türkçe karakterleri eksiksiz büyük harfe çevirir."""
     if not text or pd.isna(text):
         return ""
     text = str(text).strip()
@@ -13,34 +12,9 @@ def tr_upper(text):
         text = text.replace(lower_c, upper_c)
     return text.upper()
 
-def clean_city(raw_location):
-    """Konumdan sadece il adını ayıklar ve büyük harf yapar."""
-    if not raw_location or pd.isna(raw_location):
-        return "TÜRKİYE"
-    
-    loc_upper = tr_upper(str(raw_location))
-    
-    if any(k in loc_upper for k in ["GEBZE", "ÇAYIROVA", "DİLOVASI", "DARICA"]):
-        return "KOCAELİ"
-    if any(k in loc_upper for k in ["ÇORLU", "ÇERKEZKÖY", "ERGENE"]):
-        return "TEKİRDAĞ"
-
-    cities = [
-        "İSTANBUL", "KOCAELİ", "BURSA", "İZMİR", "ANKARA", 
-        "SAKARYA", "TEKİRDAĞ", "MANİSA", "ADANA", "ANTALYA", 
-        "KONYA", "GAZİANTEP", "ESKİŞEHİR", "KAYSERİ", "MERSİN",
-        "DENİZLİ", "SAMSUN", "BALIKESİR", "AYDIN", "YALOVA"
-    ]
-    for city in cities:
-        if city in loc_upper:
-            return city
-            
-    cleaned = loc_upper.replace("/", "").replace("TÜRKİYE", "").strip()
-    return cleaned if cleaned else "TÜRKİYE"
-
 def format_phone_3322(phone_raw):
-    """Telefonu parantezsiz XXX XXX XX XX formatına sokar, yoksa boş bırakır."""
-    if not phone_raw or pd.isna(phone_raw) or "yok" in str(phone_raw).lower():
+    """Telefonu parantezsiz tam olarak XXX XXX XX XX formatına dönüştürür."""
+    if not phone_raw or pd.isna(phone_raw):
         return ""
     
     digits = re.sub(r'\D', '', str(phone_raw))
@@ -60,19 +34,20 @@ def export_leads_to_excel(leads, output_dir="reports"):
 
     formatted_rows = []
     for lead in leads:
-        company = tr_upper(lead.get("company_name", "FİRMA BELİRTİLMEMİŞ"))
-        city = clean_city(lead.get("city", ""))
+        company = tr_upper(lead.get("company_name", ""))
+        city = tr_upper(lead.get("city", ""))
         phone = format_phone_3322(lead.get("direct_phone", ""))
         link = lead.get("job_url", "")
 
-        formatted_rows.append({
-            "FİRMA İSMİ": company,
-            "KONUM": city,
-            "İLETİŞİM BİLGİSİ": phone,
-            "İLAN LİNKİ": link
-        })
+        # Sadece firma adı ve konumu net olan satırları rapora al
+        if company and len(company) > 2 and city != "TÜRKİYE":
+            formatted_rows.append({
+                "FİRMA İSMİ": company,
+                "KONUM": city,
+                "İLETİŞİM BİLGİSİ": phone,
+                "İLAN LİNKİ": link
+            })
 
-    # Tam olarak istenen 4 sütun
     df = pd.DataFrame(formatted_rows, columns=["FİRMA İSMİ", "KONUM", "İLETİŞİM BİLGİSİ", "İLAN LİNKİ"])
 
     with pd.ExcelWriter(filepath, engine="openpyxl") as writer:
@@ -84,5 +59,5 @@ def export_leads_to_excel(leads, output_dir="reports"):
             col_letter = col[0].column_letter
             worksheet.column_dimensions[col_letter].width = max(max_len + 4, 18)
 
-    print(f"[✓] 4 Sütunlu Excel Hazırlandı: {filepath}")
+    print(f"[✓] SharePoint standartlarında Excel hazırlandı: {filepath}")
     return filepath
