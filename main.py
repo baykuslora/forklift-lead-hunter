@@ -9,12 +9,12 @@ def main():
     print("=== Forklift Lead Pipeline Başlatıldı ===")
     serpapi_key = os.getenv("SERPAPI_KEY", "").strip()
 
-    # 1. Sitelerden temiz tekil ilanları topla
+    # 1. Kariyer.net, Eleman.net, İşinolsun, Indeed ve LinkedIn'den temiz tekil ilanları topla
     scraper = JobLeadScraper()
     raw_leads = scraper.run_all()
 
-    # 2. İletişim Bilgilerini Zenginleştir
-    print("[+] İletişim bilgisi eksik olanlar için Google araması yapılıyor...")
+    # 2. Eksik Telefonları Google Santral Aramasıyla Doldur
+    print("[+] İletişim bilgisi eksik olan firmalar için internetten numara sorgulanıyor...")
     enriched_leads = []
     for lead in raw_leads:
         phone = lead.get("direct_phone", "")
@@ -33,16 +33,14 @@ def main():
 
     # 4. Son 30 Günün Aktif Listesini Al
     master_leads = db.get_all_active_leads(retention_days=30)
-    print(f"[*] Excel'e aktarılacak toplam kümülatif lead sayısı: {len(master_leads)}")
+    print(f"[*] Excel'e aktarılacak kümülatif lead sayısı: {len(master_leads)}")
 
     if not master_leads:
         print("[!] Aktif lead bulunamadı.")
         return
 
-    # 5. Excel Üret
+    # 5. Excel'i Üret ve E-posta Gönder
     excel_path = export_leads_to_excel(master_leads)
-
-    # 6. E-posta ile Gönder
     send_weekly_leads_email(excel_path=excel_path, lead_count=len(master_leads))
     print("=== Pipeline Başarıyla Tamamlandı ===")
 
