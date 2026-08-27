@@ -1,63 +1,81 @@
 import sqlite3
 from datetime import datetime, timedelta
 
-DB_PATH = "data/leads_history.db"
+class LeadDatabase:
+    def __init__(self, db_path="leads_history.db"):
+        self.db_path = db_path
+        self.init_db()
 
-def init_db():
-    import os
-    os.makedirs("data", exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS leads (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            company_name TEXT NOT NULL,
-            city TEXT,
-            source TEXT,
-            job_title TEXT,
-            job_url TEXT UNIQUE,
-            direct_phone TEXT,
-            enriched_phone TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    conn.commit()
-    conn.close()
+    def init_db(self):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS leads (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    company_name TEXT,
+                    job_title TEXT,
+                    city TEXT,
+                    direct_phone TEXT,
+                    job_url TEXT,
+                    created_at TIMESTAMP
+                )
+            """)
+            conn.commit()
 
-def is_lead_recent(company_name: str, city: str, days_threshold=30) -> bool:
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cutoff_date = datetime.now() - timedelta(days=days_threshold)
-    cursor.execute("""
-        SELECT COUNT(*) FROM leads 
-        WHERE LOWER(company_name) = LOWER(?) 
-        AND LOWER(city) = LOWER(?) 
-        AND created_at >= ?
-    """, (company_name.strip(), city.strip(), cutoff_date))
-    count = cursor.fetchone()[0]
-    conn.close()
-    return count > 0
+    def filter_and_save(self, raw_leads, retention_days=45):
+        cutoff = datetime.now() - timedelta(days=retention_days)
+        new_leads = []
 
-def save_lead(lead: dict):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    try:
-        cursor.execute("""
-            INSERT OR IGNORE INTO leads 
-            (company_name, city, source, job_title, job_url, direct_phone, enriched_phone, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            lead.get("company_name"),
-            lead.get("city"),
-            lead.get("source"),
-            lead.get("job_title"),
-            lead.get("job_url"),
-            lead.get("direct_phone"),
-            lead.get("enriched_phone"),
-            datetime.now()
-        ))
-        conn.commit()
-    except Exception as e:
-        print(f"DB Kayıt Hatası: {e}")
-    finally:
-        conn.close()
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            for lead in raw_leads:
+                company = (lead.get("company_name") or "").strip()
+                city = (lead.get("city") or "").strip()
+                if not company or len(company) < 2:
+                    continue
+
+                # Son 45 günde aynı firma ve şehir varsa mükerrer say ve atla
+                cursor.execute("""
+                    SELECT id FROM leads 
+                    WHERE LOWER(company_name) = LOWER(?) AND LOWER(city) = LOWER(?) AND created_at >= ?
+                """, (company, city, cutoff))
+                
+                if not cursor.fetchone():
+                    cursor.execute("""
+                        INSERT INTO leads (company_name, job_title, city, direct_phone, job_url, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (
+                        company,
+                        lead.get("job_title", "Forklift Operatörü"),
+                        city,
+                        lead.get("direct_phone", ""),
+                        lead.get("job_url", ""),
+                        datetime.now()
+                    ))
+                    new_leads.append(lead)
+            conn.commit()
+
+        print(f"[*] Havuza {len(new_leads)} adet yeni tekil firma eklendi.")
+        return new_leads
+
+    def get_all_active_leads(self, retention_days=45):
+        """Son 45 günün birikmiş tüm tekil master havuzunu getirir."""
+        cutoff = datetime.now() - timedelta(days=retention_days)
+        active_leads = []
+
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT company_name, job_title, city, direct_phone, job_url 
+                FROM leads 
+                WHERE created_at >= ?
+                GROUP BY LOWER(company_name), LOWER(city)
+                ORDER BY created_at DESC
+            """, (cutoff,))
+            
+            rows = cursor.fetchall()
+            for row in rows:
+                active_leads.append(dict(row))
+
+        return active_leads
