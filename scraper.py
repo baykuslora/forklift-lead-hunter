@@ -1,7 +1,9 @@
 import os
 import re
+import json
 from urllib.parse import urlparse
 import requests
+from bs4 import BeautifulSoup
 from enricher import extract_tr_phone
 
 TURKISH_81_CITIES = [
@@ -31,6 +33,14 @@ DISTRICT_MAP = {
     "HENDEK": "SAKARYA", "ARİFİYE": "SAKARYA", "ERENLER": "SAKARYA", "SERDİVAN": "SAKARYA", "AKYAZI": "SAKARYA"
 }
 
+# Şirket adı olamayacak kara liste kalıpları
+BLACKLIST_COMPANIES = [
+    "GÜNCEL İŞ FIRSATLARI", "İŞ FIRSATLARI", "İŞ İLANI", "İŞ İLANLARI", "KADIN", "ERKEK", 
+    "ENGELLİ", "ACİL", "TAM ZAMANLI", "POTANSİYEL FİRMA", "ORTALAMA MAAŞ BİLGİLERİ", 
+    "FORKLİFT OPERATÖRÜ", "REACH TRUCK OPERATÖRÜ", "DEPO ELEMANI", "ŞOFÖR", "SEO UZMANI", 
+    "GENEL BAŞVURU", "SECRET CV", "ELEMAN.NET", "KARİYER.NET", "İŞİN OLSUN", "İNDEED"
+]
+
 def tr_upper(text):
     if not text:
         return ""
@@ -45,28 +55,14 @@ class JobLeadScraper:
         self.raw_leads = []
         self.seen_signatures = set()
         self.serpapi_key = os.getenv("SERPAPI_KEY", "").strip()
-
-    def _is_invalid_page(self, url):
-        url_lower = url.lower()
-        bad_patterns = [
-            r'/is-ilanlari(/|$|\?)',
-            r'/q-.*-is-ilanlari',
-            r'/pozisyonlar/',
-            r'/jobs/search',
-            r'/jobs/kategori',
-            r'/arama',
-            r'search\?',
-            r'/tag/',
-            r'/nedir',
-            r'/maas',
-            r'/cv/',
-            r'/ozgecmis'
-        ]
-        return any(re.search(p, url_lower) for p in bad_patterns)
+        self.session = requests.Session()
+        self.session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept-Language": "tr-TR,tr;q=0.9"
+        })
 
     def _extract_source_website(self, url):
-        domain = urlparse(url).netloc.lower()
-        domain = re.sub(r'^www\.', '', domain)
+        domain = urlparse(url).netloc.lower().replace("www.", "")
         if "kariyer.net" in domain:
             return "KARİYER.NET"
         elif "eleman.net" in domain:
@@ -91,71 +87,70 @@ class JobLeadScraper:
                 return city
         return ""
 
-    def _extract_clean_company(self, raw_title, snippet, url):
-        if self._is_invalid_page(url):
-            return ""
-
-        clean_title = raw_title
-        clean_title = re.sub(r'\s*\|\s*(Kariyer\.net|LinkedIn|Eleman\.net|Indeed|Secretcv|İşinolsun|24saatteis).*$', '', clean_title, flags=re.I)
-        clean_title = re.sub(r'\s*-\s*(Kariyer\.net|LinkedIn|Eleman\.net|Indeed|Secretcv|İşinolsun|24saatteis).*$', '', clean_title, flags=re.I)
-
-        # LinkedIn: "Firma Adı hiring Forklift..."
-        m_linkedin = re.search(r'^(.*?)\s+(?:hiring|is hiring)\s+(.*)$', clean_title, flags=re.I)
-        if m_linkedin:
-            return tr_upper(m_linkedin.group(1).strip())
-
-        parts = [p.strip() for p in re.split(r'\s*[-–|•:]\s*', clean_title) if p.strip()]
-        job_keywords = [
-            "forklift", "reach truck", "reachtruck", "istif", "operatör", "operatörü", 
-            "şoför", "şoförü", "sürücü", "depo", "eleman", "elemanı", "görevlisi", 
-            "personel", "sevkiyat", "yükleme", "boşaltma", "lojistik", "paketleme",
-            "makine operatörü", "iş ilanı", "iş ilanları", "aranıyor", "acil"
-        ]
-
-        candidate_parts = []
-        for p in parts:
-            p_clean = p.strip()
-            p_upper = tr_upper(p_clean)
-
-            if re.search(r'\d{1,2}\s+(OCAK|ŞUBAT|MART|NİSAN|MAYIS|HAZİRAN|TEMMUZ|AĞUSTOS|EYLÜL|EKİM|KASIM|ARALIK)', p_upper):
-                continue
-            if p_upper in ["GÜNCEL İŞ FIRSATLARI", "İŞ FIRSATLARI", "İŞ İLANI", "İŞ İLANLARI", "KADIN", "ERKEK", "ENGELLİ", "ACİL", "TAM ZAMANLI", "POTANSİYEL FİRMA"]:
-                continue
-            if p_upper in TURKISH_81_CITIES or p_upper in DISTRICT_MAP or p_upper in ["TÜRKİYE", "MARMARA"]:
-                continue
-
-            p_lower = p_clean.lower()
-            job_word_count = sum(1 for jw in job_keywords if jw in p_lower)
-
-            has_corp_suffix = any(s in p_upper for s in ["A.Ş", "AŞ", "LTD", "ŞTİ", "SANAYİ", "SAN.", "TİC.", "TİCARET", "HOLDİNG", "GROUP", "GRUP", "LOJİSTİK", "FABRİKA"])
+    def _fetch_real_company_from_page(self, url):
+        """İlan sayfasına gidip resmi JSON-LD JobPosting etiketini okur."""
+        try:
+            resp = self.session.get(url, timeout=5)
+            if resp.status_code != 200:
+                return None
             
-            if has_corp_suffix:
-                clean_p = p_clean
-                for jw in ["Forklift Operatörü İş İlanı", "Forklift Operatörü", "Reach Truck Operatörü", "İş İlanı", "İş İlanları", "Forklift Şoförü"]:
-                    clean_p = re.sub(re.escape(jw), '', clean_p, flags=re.I).strip(' -–:')
-                if len(clean_p) >= 2:
-                    candidate_parts.append((clean_p, 10))
-            elif job_word_count == 0 and len(p_clean) >= 2 and len(p_clean.split()) <= 6:
-                candidate_parts.append((p_clean, 5))
+            soup = BeautifulSoup(resp.text, "html.parser")
+            scripts = soup.find_all("script", type="application/ld+json")
+            for script in scripts:
+                if not script.string:
+                    continue
+                data = json.loads(script.string)
+                items = data if isinstance(data, list) else [data]
+                
+                for item in items:
+                    if isinstance(item, dict) and item.get("@type") == "JobPosting":
+                        org = item.get("hiringOrganization", {})
+                        comp = org.get("name") if isinstance(org, dict) else str(org)
+                        
+                        city = ""
+                        loc = item.get("jobLocation", {})
+                        if isinstance(loc, dict):
+                            addr = loc.get("address", {})
+                            if isinstance(addr, dict):
+                                city = addr.get("addressRegion") or addr.get("addressLocality") or ""
+                        
+                        desc = item.get("description", "") + " " + resp.text
+                        phone = extract_tr_phone(desc)
+                        
+                        if comp and len(comp.strip()) >= 2:
+                            return {
+                                "company_name": tr_upper(comp),
+                                "city": self._extract_city(city or resp.text),
+                                "direct_phone": phone
+                            }
+        except Exception:
+            pass
+        return None
 
-        if candidate_parts:
-            candidate_parts.sort(key=lambda x: x[1], reverse=True)
-            return tr_upper(candidate_parts[0][0])
-
+    def _fallback_extract_company(self, title):
+        clean_title = re.sub(r'\s*\|\s*(Kariyer\.net|LinkedIn|Eleman\.net|Indeed|Secretcv|İşinolsun).*$', '', title, flags=re.I)
+        parts = [p.strip() for p in re.split(r'\s*[-–|•:]\s*', clean_title) if p.strip()]
+        
+        job_words = ["forklift", "reach truck", "reachtruck", "istif", "operatör", "şoför", "depo", "eleman", "aranıyor"]
+        for p in parts:
+            p_upper = tr_upper(p)
+            if any(b in p_upper for b in BLACKLIST_COMPANIES) or p_upper in TURKISH_81_CITIES:
+                continue
+            if not any(jw in p.lower() for jw in job_words) and 2 <= len(p) <= 45:
+                return p_upper
         return ""
 
     def scrape_all_sources(self):
         if not self.serpapi_key:
-            print("[-] SERPAPI_KEY bulunamadı!")
+            print("[-] SERPAPI_KEY eksik!")
             return
 
-        print("[+] İş ilanları taranıyor...")
+        print("[+] Gerçek iş ilanları taranıyor...")
         queries = [
-            '("forklift operatörü" OR "reach truck operatörü") site:kariyer.net inurl:is-ilani -inurl:pozisyonlar',
-            '("forklift operatörü" OR "reach truck") site:tr.linkedin.com inurl:"/jobs/view"',
-            '("forklift operatörü" OR "forklift şoförü") site:eleman.net inurl:is-ilani',
-            '("forklift operatörü" OR "reach truck") site:tr.indeed.com inurl:viewjob',
-            '("forklift operatörü") site:isinolsun.com inurl:is-ilani'
+            '("forklift operatörü" OR "reach truck operatörü") site:kariyer.net inurl:is-ilani',
+            '("forklift operatörü" OR "reach truck") site:eleman.net inurl:is-ilani',
+            '("forklift operatörü") site:isinolsun.com inurl:is-ilani',
+            '("forklift operatörü" OR "reach truck") site:secretcv.com inurl:ilan'
         ]
 
         for q in queries:
@@ -165,42 +160,54 @@ class JobLeadScraper:
                     "q": q,
                     "hl": "tr",
                     "gl": "tr",
-                    "num": "25",
+                    "num": "20",
                     "api_key": self.serpapi_key
                 }
                 res = requests.get("https://serpapi.com/search", params=params, timeout=15)
                 if res.status_code == 200:
                     data = res.json()
                     for r in data.get("organic_results", []):
+                        link = r.get("link", "")
                         raw_title = r.get("title", "")
                         snippet = r.get("snippet", "")
-                        link = r.get("link", "")
+                        
+                        # 1. Önce resmi web sayfasından JSON-LD ile çek
+                        page_data = self._fetch_real_company_from_page(link)
+                        
+                        if page_data:
+                            company = page_data["company_name"]
+                            city = page_data["city"] or self._extract_city(raw_title + " " + snippet)
+                            phone = page_data["direct_phone"] or extract_tr_phone(snippet)
+                        else:
+                            # 2. Sayfa engellerse başlık üzerinden ayıkla
+                            company = self._fallback_extract_company(raw_title)
+                            city = self._extract_city(raw_title + " " + snippet)
+                            phone = extract_tr_phone(snippet)
 
-                        full_text = f"{raw_title} {snippet}"
-                        company = self._extract_clean_company(raw_title, snippet, link)
-                        city = self._extract_city(full_text)
-                        phone = extract_tr_phone(full_text)
-                        source_site = self._extract_source_website(link)
-
-                        if not company or len(company) < 2 or not city:
+                        # Filtreler: Kara liste ve geçersiz isimleri engelle
+                        if not company or any(b in company for b in BLACKLIST_COMPANIES) or not city:
                             continue
 
-                        signature = f"{company.lower()}_{city.lower()}"
-                        if signature in self.seen_signatures:
+                        # Kişi isimlerini (genelde 2 kelime ve unvansız olanlar) engelle
+                        if len(company.split()) == 2 and not any(s in company for s in ["A.Ş", "LTD", "ŞTİ", "SAN", "TİC", "GROUP", "LOJİSTİK"]):
                             continue
 
-                        self.seen_signatures.add(signature)
+                        sig = f"{company}_{city}"
+                        if sig in self.seen_signatures:
+                            continue
+
+                        self.seen_signatures.add(sig)
                         self.raw_leads.append({
                             "company_name": company,
                             "city": city,
                             "direct_phone": phone,
-                            "source_website": source_site,
+                            "source_website": self._extract_source_website(link),
                             "job_url": link
                         })
             except Exception as e:
-                print(f"[-] Arama sorgusu hatası: {e}")
+                print(f"[-] Arama hatası: {e}")
 
-        print(f"[✓] Temiz tekil ilan sayısı: {len(self.raw_leads)}")
+        print(f"[✓] Toplam {len(self.raw_leads)} adet onaylı kurumsal lead çıkarıldı.")
 
     def run_all(self):
         self.scrape_all_sources()
