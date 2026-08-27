@@ -44,12 +44,11 @@ retries = Retry(total=2, backoff_factor=0.5, status_forcelist=[500, 502, 503, 50
 session.mount("https://", HTTPAdapter(max_retries=retries))
 
 def format_phone_3322(phone_raw):
-    """Telefonu parantezsiz 3-3-2-2 (XXX XXX XX XX) veya 444 XX XX formatına dönüştürür."""
+    """Telefonu parantezsiz 3-3-2-2 (XXX XXX XX XX) formatına dönüştürür."""
     if not phone_raw:
         return ""
     digits = re.sub(r'\D', '', str(phone_raw))
     
-    # Kara liste kontrolü
     for bl in BLACKLIST_PHONES:
         if bl in digits:
             return ""
@@ -70,7 +69,6 @@ def extract_tr_phone(text):
     if not text:
         return ""
         
-    # Önce 444'lü kurumsal hatları ara
     m_444 = re.search(r'\b(444\s*[0-9]\s*[0-9]{2}\s*[0-9]{2}|444\s*[0-9]{4})\b', text)
     if m_444:
         formatted = format_phone_3322(m_444.group(0))
@@ -99,8 +97,7 @@ def find_city_in_text(text):
     return ""
 
 def enrich_company_details(company_name: str, current_city: str, current_phone: str, serpapi_key: str) -> tuple:
-    """Şirketin kurumsal telefonunu ve merkez lokasyonunu kariyer sitelerini dışlayarak arar."""
-    # Mevcut telefon kara listedeyse sıfırla
+    """Şirketin kurumsal telefonunu ve merkez lokasyonunu Google Business ve web üzerinden arar."""
     if current_phone:
         current_phone = format_phone_3322(current_phone)
 
@@ -118,8 +115,11 @@ def enrich_company_details(company_name: str, current_city: str, current_phone: 
             final_city = "İSTANBUL"
         return final_city, final_phone
 
-    # İlan ve kariyer siteleri kesin olarak arama dışı bırakılır
-    query = f'"{company_name}" (iletişim OR santral OR "genel müdürlük" OR "444") -site:kariyer.net -site:secretcv.com -site:eleman.net -site:isinolsun.com -site:indeed.com -site:linkedin.com -site:24saatteis.com'
+    # Doğrudan Google Haritalar / İşletme Kartını tetikleyen sorgu formatı
+    if current_city and current_city != "BELİRTİLMEDİ":
+        query = f'{company_name} {current_city} telefon'
+    else:
+        query = f'{company_name} türkiye merkez iletişim telefon'
 
     try:
         params = {
@@ -127,14 +127,14 @@ def enrich_company_details(company_name: str, current_city: str, current_phone: 
             "q": query,
             "hl": "tr",
             "gl": "tr",
-            "num": "4",
+            "num": "5",
             "api_key": serpapi_key
         }
         res = session.get("https://serpapi.com/search", params=params, timeout=15)
         if res.status_code == 200:
             data = res.json()
             
-            # 1. Google Haritalar / Knowledge Graph (En Güvenilir Kurumsal Veri)
+            # 1. Google Knowledge Graph (Bilgi Kartı)
             kg = data.get("knowledge_graph", {})
             if kg:
                 if need_phone and "phone" in kg:
@@ -149,7 +149,23 @@ def enrich_company_details(company_name: str, current_city: str, current_phone: 
                         final_city = c
                         need_city = False
 
-            # 2. Resmi Web Sitesi Snippet'ları
+            # 2. Google Local Results / Harita İşletme Kartı (Alpla Plastik Konya vb.)
+            local_results = data.get("local_results", {})
+            places = local_results.get("places", []) if isinstance(local_results, dict) else data.get("local_results", [])
+            if isinstance(places, list):
+                for place in places:
+                    if need_phone and "phone" in place:
+                        p = extract_tr_phone(place.get("phone"))
+                        if p:
+                            final_phone = p
+                            need_phone = False
+                    if need_city and "address" in place:
+                        c = find_city_in_text(place.get("address"))
+                        if c:
+                            final_city = c
+                            need_city = False
+
+            # 3. Organik Web Arama Sonuçları Snippet Taraması
             for r in data.get("organic_results", []):
                 snippet_text = f"{r.get('title', '')} {r.get('snippet', '')}"
 
@@ -164,8 +180,9 @@ def enrich_company_details(company_name: str, current_city: str, current_phone: 
                     if c:
                         final_city = c
                         need_city = False
+                        
     except Exception as e:
-        print(f"[-] Arama hatası ({company_name}): {e}")
+        print(f"[-] Zenginleştirme hatası ({company_name}): {e}")
 
     if not final_city or final_city == "BELİRTİLMEDİ":
         final_city = "İSTANBUL"
