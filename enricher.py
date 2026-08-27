@@ -2,7 +2,15 @@ import os
 import re
 import json
 import requests
-from ai_extractor import call_gemini_rest, tr_upper, format_phone_3322
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+from ai_extractor import call_gemini_rest, tr_upper
+
+# Kariyer ve ilan sitelerinin çağrı merkezi numaraları (Kara Liste)
+BLACKLIST_PHONES = [
+    "2122492987", "2122492988", "2128868100", "2123462002", 
+    "3123790304", "8502903173", "8502220101", "2165930441"
+]
 
 TURKISH_81_CITIES = [
     "ADANA", "ADIYAMAN", "AFYONKARAHİSAR", "AĞRI", "AMASYA", "ANKARA", "ANTALYA", "ARTVİN", "AYDIN", 
@@ -31,23 +39,56 @@ DISTRICT_MAP = {
     "HENDEK": "SAKARYA", "ARİFİYE": "SAKARYA", "ERENLER": "SAKARYA", "SERDİVAN": "SAKARYA", "AKYAZI": "SAKARYA"
 }
 
+session = requests.Session()
+retries = Retry(total=2, backoff_factor=0.5, status_forcelist=[500, 502, 503, 504])
+session.mount("https://", HTTPAdapter(max_retries=retries))
+
+def format_phone_3322(phone_raw):
+    """Telefonu parantezsiz 3-3-2-2 (XXX XXX XX XX) veya 444 XX XX formatına dönüştürür."""
+    if not phone_raw:
+        return ""
+    digits = re.sub(r'\D', '', str(phone_raw))
+    
+    # Kara liste kontrolü
+    for bl in BLACKLIST_PHONES:
+        if bl in digits:
+            return ""
+
+    if digits.startswith("90") and len(digits) >= 12:
+        digits = digits[2:]
+    elif digits.startswith("0") and len(digits) >= 11:
+        digits = digits[1:]
+        
+    if len(digits) == 10 and digits[0] in ['2', '3', '4', '5', '8']:
+        return f"{digits[0:3]} {digits[3:6]} {digits[6:8]} {digits[8:10]}"
+    if len(digits) == 7 and digits.startswith("444"):
+        return f"{digits[0:3]} {digits[3:5]} {digits[5:7]}"
+    return ""
+
 def extract_tr_phone(text):
-    """Metin içindeki Türkiye telefon numaralarını yakalar."""
+    """Metin içindeki 444, 0850 ve sabit/mobil Türkiye telefon numaralarını filtreleyerek yakalar."""
     if not text:
         return ""
+        
+    # Önce 444'lü kurumsal hatları ara
+    m_444 = re.search(r'\b(444\s*[0-9]\s*[0-9]{2}\s*[0-9]{2}|444\s*[0-9]{4})\b', text)
+    if m_444:
+        formatted = format_phone_3322(m_444.group(0))
+        if formatted:
+            return formatted
+
     patterns = [
         r'(?:(?:\+?90|0)\s*)?([2-5]\d{2})[\s.-]*(\d{3})[\s.-]*(\d{2})[\s.-]*(\d{2})',
-        r'(?:(?:\+?90|0)\s*)?(850)[\s.-]*(\d{3})[\s.-]*(\d{2})[\s.-]*(\d{2})',
-        r'\b(444)[\s.-]*(\d{1})[\s.-]*(\d{3})\b'
+        r'(?:(?:\+?90|0)\s*)?(850)[\s.-]*(\d{3})[\s.-]*(\d{2})[\s.-]*(\d{2})'
     ]
     for pattern in patterns:
-        match = re.search(pattern, text)
-        if match:
-            return format_phone_3322(match.group(0))
+        for match in re.finditer(pattern, text):
+            formatted = format_phone_3322(match.group(0))
+            if formatted:
+                return formatted
     return ""
 
 def find_city_in_text(text):
-    """Metin içinden il veya sanayi ilçesi tespiti yapar."""
     text_upper = tr_upper(text)
     for dist, prov in DISTRICT_MAP.items():
         if re.search(r'\b' + re.escape(dist) + r'\b', text_upper):
@@ -58,22 +99,27 @@ def find_city_in_text(text):
     return ""
 
 def enrich_company_details(company_name: str, current_city: str, current_phone: str, serpapi_key: str) -> tuple:
-    """
-    Şirketin eksik lokasyonunu (merkez şehri) ve eksik telefon numarasını internetten araştırır.
-    """
+    """Şirketin kurumsal telefonunu ve merkez lokasyonunu kariyer sitelerini dışlayarak arar."""
+    # Mevcut telefon kara listedeyse sıfırla
+    if current_phone:
+        current_phone = format_phone_3322(current_phone)
+
     need_city = (not current_city) or (current_city == "BELİRTİLMEDİ")
     need_phone = not current_phone
 
-    # Zaten iki bilgi de tamsa aramaya gerek yok
     if not need_city and not need_phone:
         return current_city, current_phone
 
-    if not serpapi_key or not company_name or len(company_name) < 3:
-        return current_city, current_phone
-
-    query = f'"{company_name}" türkiye merkez genel müdürlük iletişim telefon'
     final_city = current_city
     final_phone = current_phone
+
+    if not serpapi_key or not company_name or len(company_name) < 3:
+        if need_city:
+            final_city = "İSTANBUL"
+        return final_city, final_phone
+
+    # İlan ve kariyer siteleri kesin olarak arama dışı bırakılır
+    query = f'"{company_name}" (iletişim OR santral OR "genel müdürlük" OR "444") -site:kariyer.net -site:secretcv.com -site:eleman.net -site:isinolsun.com -site:indeed.com -site:linkedin.com -site:24saatteis.com'
 
     try:
         params = {
@@ -84,74 +130,43 @@ def enrich_company_details(company_name: str, current_city: str, current_phone: 
             "num": "4",
             "api_key": serpapi_key
         }
-        res = requests.get("https://serpapi.com/search", params=params, timeout=10)
+        res = session.get("https://serpapi.com/search", params=params, timeout=15)
         if res.status_code == 200:
             data = res.json()
             
-            # 1. Google Harita / Knowledge Graph Kontrolü
+            # 1. Google Haritalar / Knowledge Graph (En Güvenilir Kurumsal Veri)
             kg = data.get("knowledge_graph", {})
             if kg:
                 if need_phone and "phone" in kg:
-                    final_phone = extract_tr_phone(kg.get("phone"))
-                    if final_phone:
+                    p = extract_tr_phone(kg.get("phone"))
+                    if p:
+                        final_phone = p
                         need_phone = False
                 
                 if need_city and "address" in kg:
-                    found_c = find_city_in_text(kg.get("address"))
-                    if found_c:
-                        final_city = found_c
+                    c = find_city_in_text(kg.get("address"))
+                    if c:
+                        final_city = c
                         need_city = False
 
-            # 2. Arama Sonuçları Metin Taraması
-            snippets_combined = []
+            # 2. Resmi Web Sitesi Snippet'ları
             for r in data.get("organic_results", []):
                 snippet_text = f"{r.get('title', '')} {r.get('snippet', '')}"
-                snippets_combined.append(snippet_text)
 
                 if need_phone and not final_phone:
-                    phone_cand = extract_tr_phone(snippet_text)
-                    if phone_cand:
-                        final_phone = phone_cand
+                    p = extract_tr_phone(snippet_text)
+                    if p:
+                        final_phone = p
                         need_phone = False
 
                 if need_city and (final_city == "BELİRTİLMEDİ" or not final_city):
-                    city_cand = find_city_in_text(snippet_text)
-                    if city_cand:
-                        final_city = city_cand
+                    c = find_city_in_text(snippet_text)
+                    if c:
+                        final_city = c
                         need_city = False
-
-            # 3. Bilgiler hala eksikse Gemini AI ile arama metnini analiz et
-            if (need_city and (final_city == "BELİRTİLMEDİ" or not final_city)) or (need_phone and not final_phone):
-                ai_prompt = f"""
-Firma: {company_name}
-Aşağıdaki Google arama metinlerini incele:
-{json.dumps(snippets_combined, ensure_ascii=False)}
-
-GÖREV:
-Bu firmanın Türkiye'deki merkezinin bulunduğu ŞEHİR (Türkiye ili) ve İLETİŞİM NUMARASINI (sabit hat veya santral) tespit et.
-Sadece JSON döndür:
-{{"city": "İSTANBUL", "phone": "0212 123 45 67"}}
-Bulamadığın alan için null yaz.
-"""
-                ai_resp = call_gemini_rest(ai_prompt)
-                if ai_resp:
-                    try:
-                        parsed = json.loads(ai_resp)
-                        if need_city and parsed.get("city"):
-                            ai_city = find_city_in_text(parsed.get("city"))
-                            if ai_city:
-                                final_city = ai_city
-                        if need_phone and parsed.get("phone"):
-                            ai_ph = extract_tr_phone(parsed.get("phone"))
-                            if ai_ph:
-                                final_phone = ai_ph
-                    except Exception:
-                        pass
-
     except Exception as e:
-        print(f"[-] Zenginleştirme hatası ({company_name}): {e}")
+        print(f"[-] Arama hatası ({company_name}): {e}")
 
-    # Şehir hala bulunamadıysa en azından varsayılan sanayi merkezi olarak İSTANBUL atanır
     if not final_city or final_city == "BELİRTİLMEDİ":
         final_city = "İSTANBUL"
 
