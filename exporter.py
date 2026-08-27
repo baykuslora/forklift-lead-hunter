@@ -1,33 +1,7 @@
 import os
-import re
 import pandas as pd
 from datetime import datetime
-
-def tr_upper(text):
-    if not text or pd.isna(text):
-        return ""
-    text = str(text).strip()
-    tr_map = {'i': 'İ', 'ı': 'I', 'ç': 'Ç', 'ş': 'Ş', 'ğ': 'Ğ', 'ü': 'Ü', 'ö': 'Ö'}
-    for lower_c, upper_c in tr_map.items():
-        text = text.replace(lower_c, upper_c)
-    return text.upper()
-
-def format_phone_3322(phone_raw):
-    """Telefonu parantezsiz 3-3-2-2 (XXX XXX XX XX) formatına dönüştürür."""
-    if not phone_raw or pd.isna(phone_raw):
-        return ""
-    
-    digits = re.sub(r'\D', '', str(phone_raw))
-    if digits.startswith("90") and len(digits) >= 12:
-        digits = digits[2:]
-    elif digits.startswith("0") and len(digits) >= 11:
-        digits = digits[1:]
-        
-    if len(digits) == 10:
-        return f"{digits[0:3]} {digits[3:6]} {digits[6:8]} {digits[8:10]}"
-    if len(digits) == 7 and digits.startswith("444"):
-        return f"{digits[0:3]} {digits[3]} {digits[4:7]}"
-    return ""
+from ai_extractor import tr_upper, format_phone_3322
 
 def export_leads_to_excel(leads, output_dir="reports"):
     os.makedirs(output_dir, exist_ok=True)
@@ -42,7 +16,7 @@ def export_leads_to_excel(leads, output_dir="reports"):
         source_site = tr_upper(lead.get("source_website", ""))
         link = str(lead.get("job_url", "")).strip()
 
-        if company and len(company) >= 2 and city and city != "TÜRKİYE":
+        if company and len(company) >= 2 and city:
             formatted_rows.append({
                 "FİRMA İSMİ": company,
                 "KONUM": city,
