@@ -18,14 +18,18 @@ def format_phone_3322(phone_raw):
         return ""
     
     digits = re.sub(r'\D', '', str(phone_raw))
-    if digits.startswith("90") and len(digits) == 12:
+    if digits.startswith("90") and len(digits) >= 12:
         digits = digits[2:]
-    elif digits.startswith("0") and len(digits) == 11:
+    elif digits.startswith("0") and len(digits) >= 11:
         digits = digits[1:]
         
     if len(digits) == 10:
         return f"{digits[0:3]} {digits[3:6]} {digits[6:8]} {digits[8:10]}"
-    return str(phone_raw).strip()
+    
+    if len(digits) == 7 and digits.startswith("444"):
+        return f"{digits[0:3]} {digits[3]} {digits[4:7]}"
+        
+    return ""
 
 def export_leads_to_excel(leads, output_dir="reports"):
     os.makedirs(output_dir, exist_ok=True)
@@ -39,8 +43,8 @@ def export_leads_to_excel(leads, output_dir="reports"):
         phone = format_phone_3322(lead.get("direct_phone", ""))
         link = lead.get("job_url", "")
 
-        # Sadece firma adı ve konumu net olan satırları rapora al
-        if company and len(company) > 2 and city != "TÜRKİYE":
+        # Yalnızca firma adı ve konumu net olan satırları listeye al
+        if company and len(company) >= 2 and city and city != "TÜRKİYE":
             formatted_rows.append({
                 "FİRMA İSMİ": company,
                 "KONUM": city,
@@ -48,6 +52,7 @@ def export_leads_to_excel(leads, output_dir="reports"):
                 "İLAN LİNKİ": link
             })
 
+    # Tam 4 Sütun
     df = pd.DataFrame(formatted_rows, columns=["FİRMA İSMİ", "KONUM", "İLETİŞİM BİLGİSİ", "İLAN LİNKİ"])
 
     with pd.ExcelWriter(filepath, engine="openpyxl") as writer:
