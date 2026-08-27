@@ -1,12 +1,9 @@
 import os
 import json
 import re
-import google.generativeai as genai
+import requests
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
 
 def tr_upper(text):
     if not text:
@@ -32,39 +29,37 @@ def format_phone_3322(phone_raw):
         return f"{digits[0:3]} {digits[3]} {digits[4:7]}"
     return ""
 
-def get_best_available_model():
-    """Hesabınızda aktif ve generateContent destekleyen modeli otomatik keşfeder."""
-    try:
-        available_models = []
-        for m in genai.list_models():
-            if "generateContent" in m.supported_generation_methods:
-                available_models.append(m.name)
-        
-        print(f"[*] Hesabınızdaki aktif modeller: {available_models}")
+def call_gemini_rest(prompt: str) -> str:
+    """SDK bağımlılığı olmadan doğrudan Google REST API üzerinden çalışır."""
+    if not GEMINI_API_KEY:
+        return ""
 
-        # Öncelik sırası: flash modelleri -> diğerleri
-        for m_name in available_models:
-            if "flash" in m_name.lower():
-                return m_name
-        
-        if available_models:
-            return available_models[0]
-    except Exception as e:
-        print(f"[-] Model listeleme hatası: {e}")
-        
-    return "models/gemini-1.5-flash"
+    # Kullanılabilir güncel modeller sırayla denenir
+    models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-pro"]
+    
+    for model in models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "response_mime_type": "application/json",
+                "temperature": 0.1
+            }
+        }
+        try:
+            resp = requests.post(url, headers=headers, json=payload, timeout=20)
+            if resp.status_code == 200:
+                data = resp.json()
+                return data["candidates"][0]["content"]["parts"][0]["text"]
+        except Exception:
+            continue
+
+    return ""
 
 def extract_leads_with_ai(raw_search_results: list) -> list:
-    """Ham arama sonuçlarını Gemini AI ile işleyip saf kurumsal ilanlara dönüştürür."""
-    if not GEMINI_API_KEY:
-        print("[-] GEMINI_API_KEY bulunamadı, AI çıkarma atlandı.")
-        return []
-
     if not raw_search_results:
         return []
-
-    target_model_name = get_best_available_model()
-    print(f"[+] Kullanılacak model: {target_model_name}")
 
     prompt = f"""
 Sen B2B satış odaklı bir veri analiz uzmanısın.
@@ -95,14 +90,13 @@ JSON Şeması:
 {json.dumps(raw_search_results, ensure_ascii=False, indent=2)}
 """
 
+    response_text = call_gemini_rest(prompt)
+    if not response_text:
+        print("[-] Gemini REST API yanıt vermedi.")
+        return []
+
     try:
-        model = genai.GenerativeModel(
-            model_name=target_model_name,
-            generation_config={"response_mime_type": "application/json"}
-        )
-        response = model.generate_content(prompt)
-        parsed_data = json.loads(response.text)
-        
+        parsed_data = json.loads(response_text)
         valid_leads = []
         for item in parsed_data:
             if not item.get("is_valid_forklift_job"):
@@ -127,9 +121,9 @@ JSON Şeması:
                 "job_url": url
             })
 
-        print(f"[✓] AI Analizi: {len(raw_search_results)} ham sonuçtan {len(valid_leads)} geçerli kurumsal lead üretildi.")
+        print(f"[✓] REST AI Analizi: {len(raw_search_results)} ham sonuçtan {len(valid_leads)} temiz kurumsal lead üretildi.")
         return valid_leads
 
     except Exception as e:
-        print(f"[-] Gemini AI çıkarma hatası ({target_model_name}): {e}")
+        print(f"[-] JSON parse hatası: {e}")
         return []
