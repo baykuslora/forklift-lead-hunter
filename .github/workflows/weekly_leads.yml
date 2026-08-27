@@ -25,11 +25,11 @@ jobs:
     - name: Bağımlılıkları Yükle
       run: |
         pip install -r requirements.txt
-        playwright install chromium --with-deps
 
     - name: Pipeline'ı Çalıştır
       env:
         SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         SMTP_SERVER: "smtp.gmail.com"
         SMTP_PORT: "587"
         SMTP_USER: ${{ secrets.SMTP_USER }}
