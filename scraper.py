@@ -30,19 +30,18 @@ class JobLeadScraper:
         })
 
     def scrape_google_jobs(self):
-        """Kariyer.net, LinkedIn, Eleman.net ve Secretcv ilanlarını tek havuzda toplar."""
+        """Kariyer.net, LinkedIn, Eleman.net ve Secretcv ilanlarını SerpApi üzerinden çeker."""
         if not self.serpapi_key:
-            print("[-] SERPAPI_KEY bulunamadı, arama yapılamıyor.")
+            print("[-] SERPAPI_KEY bulunamadı!")
             return
 
-        print("[+] Google Jobs motoru Türkiye geneli taranıyor...")
+        print("[+] Google Jobs motoru taranıyor...")
         
-        # Farklı lokasyon ve anahtar kelimelerle zenginleştirilmiş sorgular
         queries = [
-            "forklift operatörü iş ilanları İstanbul",
-            "forklift şoförü Kocaeli Gebze",
-            "reach truck operatörü iş ilanları",
-            "depo forklift operatörü Türkiye"
+            "forklift operatörü",
+            "forklift şoförü",
+            "reach truck operatörü",
+            "depo forklift"
         ]
 
         for q in queries:
@@ -50,28 +49,40 @@ class JobLeadScraper:
                 params = {
                     "engine": "google_jobs",
                     "q": q,
+                    "location": "Turkey",
                     "hl": "tr",
                     "gl": "tr",
                     "api_key": self.serpapi_key
                 }
-                res = requests.get("https://serpapi.com/search", params=params, timeout=15)
-                if res.status_code == 200:
-                    data = res.json()
-                    jobs = data.get("jobs_results", [])
-                    for j in jobs:
-                        title = j.get("title", "Forklift Operatörü")
-                        company = j.get("company_name", "Potansiyel Firma")
-                        location = j.get("location", "Türkiye")
-                        desc = j.get("description", "")
-                        
-                        link = ""
-                        apply_options = j.get("apply_options", [])
-                        if apply_options:
-                            link = apply_options[0].get("link", "")
-                        if not link:
-                            link = j.get("share_link", "https://www.google.com")
+                res = requests.get("https://serpapi.com/search", params=params, timeout=20)
+                data = res.json()
 
-                        self._add_lead("Google Jobs Havuzu", company, title, location, link, f"{desc} {company}")
+                if res.status_code != 200:
+                    print(f"[-] SerpApi Yanıt Hatası ({res.status_code}): {data.get('error', res.text[:120])}")
+                    continue
+
+                if "error" in data:
+                    print(f"[-] SerpApi Hatası: {data['error']}")
+                    continue
+
+                jobs = data.get("jobs_results", [])
+                print(f"[+] '{q}' sorgusu için {len(jobs)} ilan çekildi.")
+                
+                for j in jobs:
+                    title = j.get("title", "Forklift Operatörü")
+                    company = j.get("company_name", "Potansiyel Firma")
+                    location = j.get("location", "Türkiye")
+                    desc = j.get("description", "")
+                    
+                    link = ""
+                    apply_options = j.get("apply_options", [])
+                    if apply_options:
+                        link = apply_options[0].get("link", "")
+                    if not link:
+                        link = j.get("share_link", "https://www.google.com")
+
+                    self._add_lead("Google Jobs", company, title, location, link, f"{desc} {company}")
+
             except Exception as e:
                 print(f"[-] Hata ({q}): {e}")
 
