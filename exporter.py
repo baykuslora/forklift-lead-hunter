@@ -13,7 +13,7 @@ def tr_upper(text):
     return text.upper()
 
 def format_phone_3322(phone_raw):
-    """Telefonu parantezsiz tam olarak XXX XXX XX XX (3-3-2-2) formatına dönüştürür."""
+    """Telefonu parantezsiz 3-3-2-2 (XXX XXX XX XX) formatına dönüştürür."""
     if not phone_raw or pd.isna(phone_raw):
         return ""
     
@@ -25,10 +25,6 @@ def format_phone_3322(phone_raw):
         
     if len(digits) == 10:
         return f"{digits[0:3]} {digits[3:6]} {digits[6:8]} {digits[8:10]}"
-    
-    if len(digits) == 7 and digits.startswith("444"):
-        return f"{digits[0:3]} {digits[3]} {digits[4:7]}"
-        
     return ""
 
 def export_leads_to_excel(leads, output_dir="reports"):
@@ -41,7 +37,7 @@ def export_leads_to_excel(leads, output_dir="reports"):
         company = tr_upper(lead.get("company_name", ""))
         city = tr_upper(lead.get("city", ""))
         phone = format_phone_3322(lead.get("direct_phone", ""))
-        source_web = tr_upper(lead.get("source_website", ""))
+        source_site = tr_upper(lead.get("source_website", ""))
         link = str(lead.get("job_url", "")).strip()
 
         if company and len(company) >= 2 and city and city != "TÜRKİYE":
@@ -49,7 +45,7 @@ def export_leads_to_excel(leads, output_dir="reports"):
                 "FİRMA İSMİ": company,
                 "KONUM": city,
                 "İLETİŞİM BİLGİSİ": phone,
-                "İLANIN ALINDIĞI WEBSİTESİ": source_web,
+                "İLANIN ALINDIĞI WEBSİTESİ": source_site,
                 "İLAN LİNKİ": link
             })
 
@@ -57,13 +53,12 @@ def export_leads_to_excel(leads, output_dir="reports"):
     df = pd.DataFrame(formatted_rows, columns=columns)
 
     with pd.ExcelWriter(filepath, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="Musteri_Adaylari")
-        worksheet = writer.sheets["Musteri_Adaylari"]
-        
+        df.to_excel(writer, index=False, sheet_name="Potansiyel Müşteriler")
+        worksheet = writer.sheets["Potansiyel Müşteriler"]
         for col in worksheet.columns:
             max_len = max(len(str(cell.value or '')) for cell in col)
             col_letter = col[0].column_letter
             worksheet.column_dimensions[col_letter].width = max(max_len + 4, 18)
 
-    print(f"[✓] Excel hazırlandı: {filepath}")
+    print(f"[✓] 5 Sütunlu Excel hazırlandı: {filepath}")
     return filepath
