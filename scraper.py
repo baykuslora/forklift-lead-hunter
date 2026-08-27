@@ -3,50 +3,84 @@ import re
 import requests
 from enricher import extract_tr_phone
 
+TURKISH_CITIES = [
+    "İSTANBUL", "KOCAELİ", "BURSA", "İZMİR", "ANKARA", "SAKARYA", 
+    "TEKİRDAĞ", "MANİSA", "ADANA", "ANTALYA", "KONYA", "GAZİANTEP", 
+    "ESKİŞEHİR", "KAYSERİ", "MERSİN", "DENİZLİ", "SAMSUN", "BALIKESİR", 
+    "AYDIN", "YALOVA", "BOLU", "DÜZCE", "BİLECİK", "KÜTAHYA", "ÇANAKKALE"
+]
+
+JOB_TITLE_KEYWORDS = [
+    "forklift", "reach truck", "reachtruck", "istif", "operatör", "operatörü", 
+    "şoför", "şoförü", "sürücü", "depo", "sevkiyat", "eleman", "elemanı", 
+    "görevlisi", "personel", "iş ilanı", "ilanı", "iş fırsatı", "hiring", 
+    "kariyer.net", "eleman.net", "isinolsun", "secretcv", "linkedin", "indeed"
+]
+
 class JobLeadScraper:
     def __init__(self):
         self.raw_leads = []
         self.seen_signatures = set()
         self.serpapi_key = os.getenv("SERPAPI_KEY", "").strip()
 
-    def _add_lead(self, source, company, title, city, link, text=""):
-        company = (company or "Firma Belirtilmemiş").strip()[:60]
-        title = (title or "Forklift Operatörü").strip()[:60]
-        city = (city or "Türkiye").strip()[:40]
+    def _extract_city(self, text):
+        t_upper = text.upper()
+        if any(k in t_upper for k in ["GEBZE", "ÇAYIROVA", "DİLOVASI", "DARICA", "KÖRFEZ"]):
+            return "KOCAELİ"
+        if any(k in t_upper for k in ["ÇORLU", "ÇERKEZKÖY", "ERGENE"]):
+            return "TEKİRDAĞ"
+        if any(k in t_upper for k in ["TUZLA", "ÜMRANİYE", "PENDİK", "ESENYURT", "HADIMKÖY", "BAŞAKŞEHİR"]):
+            return "İSTANBUL"
 
-        signature = f"{company.lower()}_{city.lower()}"
-        if signature in self.seen_signatures:
-            return
+        for city in TURKISH_CITIES:
+            if city in t_upper:
+                return city
+        return "TÜRKİYE"
 
-        self.seen_signatures.add(signature)
-        phone = extract_tr_phone(text) if text else ""
+    def _extract_clean_company(self, raw_title, snippet):
+        """Başlık ve özet metinden pozisyon/site adlarını atarak saf şirket adını bulur."""
+        # Başlığı ayraçlardan böl
+        parts = [p.strip() for p in re.split(r'[-–|:•/]', raw_title) if p.strip()]
+        candidate_companies = []
 
-        self.raw_leads.append({
-            "source": source,
-            "company_name": company,
-            "job_title": title,
-            "city": city,
-            "job_url": link or "https://www.google.com",
-            "direct_phone": phone or ""
-        })
+        for p in parts:
+            p_lower = p.lower()
+            # İçinde pozisyon adı veya site adı geçmeyen parçayı firma adı kabul et
+            has_job_word = any(kw in p_lower for kw in JOB_TITLE_KEYWORDS)
+            if not has_job_word and len(p.split()) <= 6 and len(p) > 2:
+                candidate_companies.append(p)
 
-    def scrape_serpapi_jobs(self):
+        if candidate_companies:
+            # En uygun firma adını seç ve temizle
+            best_cand = candidate_companies[0]
+            # "A.Ş", "Ltd. Şti", "Sanayi", "Ticaret" gibi ekleri koru
+            return best_cand.strip()
+
+        # LinkedIn özel formatı: "Firma Adı hiring Forklift..."
+        m_linkedin = re.search(r'^(.*?)\s+hiring\s+', raw_title, re.I)
+        if m_linkedin:
+            return m_linkedin.group(1).strip()
+
+        return ""
+
+    def scrape_all_sources(self):
         if not self.serpapi_key:
             print("[-] SERPAPI_KEY bulunamadı!")
             return
 
-        print("[+] Türkiye geneli sanayi ve lojistik ilan havuzu taranıyor...")
+        print("[+] LinkedIn, Indeed, Kariyer.net, Eleman.net taranıyor...")
 
-        google_queries = [
-            'forklift operatörü İstanbul (site:eleman.net OR site:kariyer.net OR site:isinolsun.com OR site:secretcv.com)',
-            'forklift şoförü Kocaeli Gebze (site:eleman.net OR site:kariyer.net OR site:isinolsun.com OR site:secretcv.com)',
-            'forklift operatörü Bursa İzmir Ankara (site:eleman.net OR site:kariyer.net OR site:isinolsun.com)',
-            'reach truck operatörü (site:eleman.net OR site:kariyer.net OR site:isinolsun.com OR site:secretcv.com)',
-            'depo forklift operatörü (site:eleman.net OR site:kariyer.net OR site:isinolsun.com)',
-            'istif makinesi operatörü depo elemanı (site:eleman.net OR site:kariyer.net OR site:isinolsun.com)'
+        # Tüm büyük portalları ve sanayi odaklı bölgeleri kapsayan net sorgular
+        queries = [
+            'forklift operatörü (site:tr.linkedin.com/jobs OR site:tr.indeed.com)',
+            'forklift operatörü iş ilanları (site:kariyer.net OR site:eleman.net OR site:isinolsun.com)',
+            'reach truck operatörü (site:tr.linkedin.com/jobs OR site:kariyer.net OR site:tr.indeed.com)',
+            'forklift şoförü İstanbul Kocaeli Gebze (site:kariyer.net OR site:eleman.net OR site:tr.indeed.com)',
+            'depo forklift operatörü İzmir Bursa Ankara (site:kariyer.net OR site:eleman.net)',
+            'istif makinesi operatörü depo sevkiyat (site:kariyer.net OR site:eleman.net OR site:tr.indeed.com)'
         ]
 
-        for q in google_queries:
+        for q in queries:
             try:
                 params = {
                     "engine": "google",
@@ -56,40 +90,39 @@ class JobLeadScraper:
                     "num": "20",
                     "api_key": self.serpapi_key
                 }
-                res = requests.get("https://serpapi.com/search", params=params, timeout=15)
+                res = requests.get("https://serpapi.com/search", params=params, timeout=18)
                 if res.status_code == 200:
                     data = res.json()
-                    results = data.get("organic_results", [])
-                    for r in results:
+                    for r in data.get("organic_results", []):
                         raw_title = r.get("title", "")
                         snippet = r.get("snippet", "")
                         link = r.get("link", "")
 
-                        # Gerçek firma adını başlıktan çekme
-                        parts = [p.strip() for p in re.split(r'[-–|:]', raw_title) if p.strip()]
-                        company = ""
-                        for p in parts:
-                            p_clean = re.sub(r'(is-ilani|iş ilanı|eleman\.net|kariyer\.net|isinolsun|secretcv|arayanlar|iş ilanları)', '', p, flags=re.I).strip()
-                            if len(p_clean) > 2 and not any(w in p_clean.lower() for w in ["forklift", "operatör", "şoför", "reach truck", "istif", "eleman"]):
-                                company = p_clean
-                                break
-                        
-                        if not company and len(parts) > 1:
-                            company = parts[1]
+                        full_text = f"{raw_title} {snippet}"
+                        company = self._extract_clean_company(raw_title, snippet)
+                        city = self._extract_city(full_text)
+                        phone = extract_tr_phone(full_text)
 
-                        # İl tespiti
-                        city = "Türkiye"
-                        for c in ["İstanbul", "Kocaeli", "Gebze", "Bursa", "İzmir", "Ankara", "Tekirdağ", "Manisa", "Sakarya"]:
-                            if c.lower() in (raw_title + " " + snippet).lower():
-                                city = c
-                                break
+                        # Firma adı bulunamadıysa veya anlamsızsa listeye alma
+                        if not company or len(company) < 2 or city == "TÜRKİYE":
+                            continue
 
-                        self._add_lead("Web İlan Havuzu", company, "Forklift Operatörü", city, link, f"{raw_title} {snippet}")
+                        signature = f"{company.lower()}_{city.lower()}"
+                        if signature in self.seen_signatures:
+                            continue
+
+                        self.seen_signatures.add(signature)
+                        self.raw_leads.append({
+                            "company_name": company,
+                            "city": city,
+                            "direct_phone": phone,
+                            "job_url": link
+                        })
             except Exception as e:
-                print(f"[-] Arama hatası: {e}")
+                print(f"[-] Arama hatası ({q[:25]}...): {e}")
 
-        print(f"[✓] Tarama tamamlandı. Toplam toplanan tekil lead: {len(self.raw_leads)}")
+        print(f"[✓] Temizlenen toplam nitelikli ilan: {len(self.raw_leads)}")
 
     def run_all(self):
-        self.scrape_serpapi_jobs()
+        self.scrape_all_sources()
         return self.raw_leads
