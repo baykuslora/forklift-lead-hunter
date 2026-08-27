@@ -1,54 +1,59 @@
-import os
 import re
 import requests
-from urllib.parse import quote_plus
 
-def clean_company_name(name: str) -> str:
-    noise_words = ["a.ş.", "a.ş", "as", "ltd.", "ltd", "şti.", "şti", "san.", "tic.", "sanayi", "ticaret", "ve"]
-    words = name.lower().split()
-    cleaned = [w for w in words if w not in noise_words]
-    return " ".join(cleaned) if cleaned else name
-
-def extract_tr_phone(text: str) -> str:
+def extract_tr_phone(text):
+    """Metin içindeki Türkiye telefon numaralarını yakalar."""
     if not text:
         return ""
-    pattern = r'(?:\+?90|0)?\s*(?:\(?[1-9]\d{2}\)?)\s*\d{3}\s*\d{2}\s*\d{2}'
-    matches = re.findall(pattern, text)
-    if matches:
-        clean_num = re.sub(r'\D', '', matches[0])
-        if clean_num.startswith('90'):
-            clean_num = clean_num[2:]
-        if clean_num.startswith('0'):
-            clean_num = clean_num[1:]
-        return f"0 ({clean_num[:3]}) {clean_num[3:6]} {clean_num[6:8]} {clean_num[8:]}"
+    
+    # Standart Türkiye telefon formatları (Sabit hatlar ve GSM)
+    patterns = [
+        r'(?:(?:\+90|0090|0)\s*)?(?:[1-5]\d{2}|850|444)\s*(?:[0-9]\s*){7}',
+        r'\b(?:0\s*)?[2-5]\d{2}[\s.-]?\d{3}[\s.-]?\d{2}[\s.-]?\d{2}\b',
+        r'\b(?:0\s*)?5\d{2}[\s.-]?\d{3}[\s.-]?\d{2}[\s.-]?\d{2}\b'
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            clean_digits = re.sub(r'\D', '', match.group(0))
+            if len(clean_digits) >= 10:
+                return clean_digits
     return ""
 
-def enrich_company_phone(company_name: str, city: str = "") -> dict:
-    search_query = f"{clean_company_name(company_name)} {city} iletişim telefon"
-    serpapi_key = os.getenv("SERPAPI_KEY")
+def find_company_phone_online(company_name, city, serpapi_key):
+    """İlanda telefon yoksa, Google üzerinde firmanın santral/şirket numarasını arar."""
+    if not serpapi_key or not company_name or len(company_name) < 3:
+        return ""
     
-    if serpapi_key:
-        try:
-            url = f"https://serpapi.com/search.json?q={quote_plus(search_query)}&hl=tr&gl=tr&api_key={serpapi_key}"
-            res = requests.get(url, timeout=10).json()
-            if "knowledge_graph" in res and "phone" in res["knowledge_graph"]:
-                return {"phone": res["knowledge_graph"]["phone"], "source": "Google KG"}
-            for result in res.get("organic_results", [])[:3]:
-                snippet = result.get("snippet", "")
-                found_phone = extract_tr_phone(snippet)
-                if found_phone:
-                    return {"phone": found_phone, "source": "Google Snippet"}
-        except Exception as e:
-            print(f"SerpAPI Hatası ({company_name}): {e}")
-
+    query = f'"{company_name}" {city} telefon iletişim santral'
     try:
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        ddg_url = f"https://html.duckduckgo.com/html/?q={quote_plus(search_query)}"
-        resp = requests.get(ddg_url, headers=headers, timeout=8)
-        found_phone = extract_tr_phone(resp.text)
-        if found_phone:
-            return {"phone": found_phone, "source": "DuckDuckGo"}
-    except Exception:
-        pass
+        params = {
+            "engine": "google",
+            "q": query,
+            "hl": "tr",
+            "gl": "tr",
+            "num": "5",
+            "api_key": serpapi_key
+        }
+        res = requests.get("https://serpapi.com/search", params=params, timeout=12)
+        if res.status_code == 200:
+            data = res.json()
+            
+            # 1. Google Bilgi Paneli (Knowledge Graph / Google Haritalar Telefonu)
+            kg = data.get("knowledge_graph", {})
+            if kg and "phone" in kg:
+                phone = extract_tr_phone(kg.get("phone"))
+                if phone:
+                    return phone
 
-    return {"phone": "Bulunamadı (Manuel Ara)", "source": "Yok"}
+            # 2. Arama Sonuçlarındaki Snippet ve Başlıklar
+            for result in data.get("organic_results", []):
+                snippet_text = f"{result.get('title', '')} {result.get('snippet', '')}"
+                phone = extract_tr_phone(snippet_text)
+                if phone:
+                    return phone
+    except Exception as e:
+        print(f"[-] Şirket telefonu aranırken hata: {e}")
+        
+    return ""
