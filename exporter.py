@@ -1,44 +1,100 @@
+import os
+import re
 import pandas as pd
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
+from datetime import datetime
 
-def export_leads_to_excel(leads: list, filename: str) -> str:
-    if not leads:
-        return None
-    data = []
-    for l in leads:
-        data.append({
-            "Firma Adı": l.get("company_name"),
-            "Şehir / Konum": l.get("city"),
-            "İlanda Çıkan Tel": l.get("direct_phone"),
-            "Bulunan Santral/Merkez Tel": l.get("enriched_phone"),
-            "İlan Pozisyonu": l.get("job_title"),
-            "Kaynak": l.get("source"),
-            "İlan Linki": l.get("job_url"),
-            "Satış Arama Durumu": "Aranmadı",
-            "Görüşülen Yetkili": "",
-            "Satış Notları": ""
+def tr_upper(text):
+    """Türkçe karakterleri doğru şekilde büyük harfe çevirir."""
+    if not text or pd.isna(text):
+        return ""
+    text = str(text)
+    tr_map = {
+        'i': 'İ', 'ı': 'I', 'ç': 'Ç', 'ş': 'Ş', 
+        'ğ': 'Ğ', 'ü': 'Ü', 'ö': 'Ö'
+    }
+    for lower_c, upper_c in tr_map.items():
+        text = text.replace(lower_c, upper_c)
+    return text.upper().strip()
+
+def clean_city(raw_location):
+    """Konum bilgisinden sadece net il adını ayıklar ve büyük harf yapar."""
+    if not raw_location or pd.isna(raw_location):
+        return "TÜRKİYE"
+
+    loc_upper = tr_upper(str(raw_location))
+    
+    # İlçe / Özel lokasyon eşleştirmeleri
+    if any(k in loc_upper for k in ["GEBZE", "ÇAYIROVA", "DİLOVASI", "DARICA", "KÖRFEZ"]):
+        return "KOCAELİ"
+    if any(k in loc_upper for k in ["ÇORLU", "ÇERKEZKÖY", "ERGENE"]):
+        return "TEKİRDAĞ"
+
+    # Türkiye illeri listesi
+    cities = [
+        "İSTANBUL", "KOCAELİ", "BURSA", "İZMİR", "ANKARA", 
+        "SAKARYA", "TEKİRDAĞ", "MANİSA", "ADANA", "ANTALYA", 
+        "KONYA", "GAZİANTEP", "ESKİŞEHİR", "KAYSERİ", "MERSİN",
+        "DENİZLİ", "SAMSUN", "BALIKESİR", "AYDIN", "YALOVA",
+        "BOLU", "DÜZCE", "BİLECİK", "KÜTAHYA", "KAHRAMANMARAŞ"
+    ]
+
+    for city in cities:
+        if city in loc_upper:
+            return city
+
+    # Bulunamazsa / ve Türkiye ibarelerini temizle
+    cleaned = loc_upper.replace("/", "").replace("TÜRKİYE", "").strip()
+    return cleaned if cleaned else "TÜRKİYE"
+
+def format_phone_3322(phone_raw):
+    """Telefon numarasını parantezsiz 3-3-2-2 (XXX XXX XX XX) formatına sokar."""
+    if not phone_raw or pd.isna(phone_raw) or "yok" in str(phone_raw).lower():
+        return "İletişim Bilgisi Yok"
+
+    digits = re.sub(r'\D', '', str(phone_raw))
+
+    # Başındaki 90 veya 0 kodlarını temizle
+    if digits.startswith("90") and len(digits) == 12:
+        digits = digits[2:]
+    elif digits.startswith("0") and len(digits) == 11:
+        digits = digits[1:]
+
+    # 10 haneli standart numara formatlama (Örn: 212 143 67 55 veya 532 123 45 67)
+    if len(digits) == 10:
+        return f"{digits[0:3]} {digits[3:6]} {digits[6:8]} {digits[8:10]}"
+
+    return str(phone_raw).strip()
+
+def export_leads_to_excel(leads, output_dir="reports"):
+    """Lead verilerini SharePoint kopyalamasına uygun 3 sütunlu Excel dosyasına kaydeder."""
+    os.makedirs(output_dir, exist_ok=True)
+    today_str = datetime.now().strftime("%d.%m.%Y")
+    filename = f"Jungheinrich_Leadler_{today_str}.xlsx"
+    filepath = os.path.join(output_dir, filename)
+
+    formatted_rows = []
+    for lead in leads:
+        company = tr_upper(lead.get("company_name", "POTANSİYEL FİRMA"))
+        city = clean_city(lead.get("city", ""))
+        phone = format_phone_3322(lead.get("direct_phone", ""))
+
+        formatted_rows.append({
+            "FİRMA İSMİ": company,
+            "KONUM": city,
+            "İLETİŞİM BİLGİSİ": phone
         })
-    df = pd.DataFrame(data)
-    with pd.ExcelWriter(filename, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="Potansiyel Leadler")
-        ws = writer.sheets["Potansiyel Leadler"]
-        header_fill = PatternFill(start_color="FFCC00", end_color="FFCC00", fill_type="solid")
-        header_font = Font(name="Arial", size=11, bold=True, color="000000")
-        thin_border = Border(
-            left=Side(style='thin', color='DDDDDD'),
-            right=Side(style='thin', color='DDDDDD'),
-            top=Side(style='thin', color='DDDDDD'),
-            bottom=Side(style='thin', color='DDDDDD')
-        )
-        for col_idx, col in enumerate(ws.iter_cols(min_row=1, max_row=len(df)+1), 1):
-            col[0].fill = header_fill
-            col[0].font = header_font
-            col[0].alignment = Alignment(horizontal="center", vertical="center")
-            for cell in col[1:]:
-                cell.border = thin_border
+
+    df = pd.DataFrame(formatted_rows, columns=["FİRMA İSMİ", "KONUM", "İLETİŞİM BİLGİSİ"])
+
+    # Excel dosyasına yazma ve sütun genişliklerini hizalama
+    with pd.ExcelWriter(filepath, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="Potansiyel Müşteriler")
+        worksheet = writer.sheets["Potansiyel Müşteriler"]
+
+        for col in worksheet.columns:
             max_len = max(len(str(cell.value or '')) for cell in col)
-            ws.column_dimensions[get_column_letter(col_idx)].width = max(max_len + 4, 15)
-        ws.row_dimensions[1].height = 26
-        ws.freeze_panes = "A2"
-    return filename
+            col_letter = col[0].column_letter
+            worksheet.column_dimensions[col_letter].width = max(max_len + 4, 16)
+
+    print(f"[✓] SharePoint formatlı Excel oluşturuldu: {filepath}")
+    return filepath
