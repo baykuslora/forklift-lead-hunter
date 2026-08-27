@@ -1,49 +1,34 @@
 import os
-from datetime import datetime
-from dotenv import load_dotenv
-from database import init_db, is_lead_recent, save_lead
 from scraper import JobLeadScraper
-from enricher import enrich_company_phone
+from database import LeadDatabase
 from exporter import export_leads_to_excel
 from mailer import send_weekly_leads_email
 
-load_dotenv()
-
 def main():
     print("=== Forklift Lead Generation Pipeline Başlatıldı ===")
-    init_db()
-
+    
+    # 1. Web sitelerini ve Google arama motorunu tara
     scraper = JobLeadScraper()
     raw_leads = scraper.run_all()
-    print(f"[*] Toplam {len(raw_leads)} ham ilan bulundu.")
+    print(f"[*] Bu taramada {len(raw_leads)} ilan yakalandı.")
 
-    fresh_leads = []
-    for lead in raw_leads:
-        company = lead["company_name"]
-        city = lead["city"]
-        if not is_lead_recent(company, city, days_threshold=30):
-            fresh_leads.append(lead)
+    # 2. Yeni olanları veritabanına ekle (Mükerrerleri filtreler)
+    db = LeadDatabase()
+    db.filter_and_save(raw_leads, retention_days=45)
 
-    print(f"[*] Yeni lead sayısı: {len(fresh_leads)}")
-    if not fresh_leads:
-        print("[!] Bu hafta yeni lead bulunamadı.")
+    # 3. Son 45 günün birikmiş TÜM tekil havuzunu al (Kümülatif Master Liste)
+    master_leads = db.get_all_active_leads(retention_days=45)
+    print(f"[*] Excel'e aktarılacak toplam kümülatif lead sayısı: {len(master_leads)}")
+
+    if not master_leads:
+        print("[!] Aktif lead bulunamadı.")
         return
 
-    for idx, lead in enumerate(fresh_leads, 1):
-        if lead["direct_phone"] == "İlanda Yok":
-            enrichment_res = enrich_company_phone(lead["company_name"], lead["city"])
-            lead["enriched_phone"] = enrichment_res["phone"]
-        else:
-            lead["enriched_phone"] = lead["direct_phone"]
-        save_lead(lead)
+    # 4. 4 Sütunlu Excel raporunu tüm havuzla oluştur
+    excel_path = export_leads_to_excel(master_leads)
 
-    date_str = datetime.now().strftime("%Y-%m-%d")
-    output_filename = f"Jungheinrich_Leadler_{date_str}.xlsx"
-    excel_path = export_leads_to_excel(fresh_leads, output_filename)
-
-    if excel_path:
-        send_weekly_leads_email(excel_path, len(fresh_leads))
-
+    # 5. Ece Hanım ve ekibe maili ilet
+    send_weekly_leads_email(excel_path=excel_path, lead_count=len(master_leads))
     print("=== Pipeline Başarıyla Tamamlandı ===")
 
 if __name__ == "__main__":
