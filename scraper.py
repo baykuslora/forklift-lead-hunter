@@ -1,7 +1,6 @@
 import re
 import requests
 from bs4 import BeautifulSoup
-from playwright.sync_api import sync_playwright
 from enricher import extract_tr_phone
 
 class JobLeadScraper:
@@ -10,13 +9,12 @@ class JobLeadScraper:
         self.seen_signatures = set()
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
+            "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
         }
-        self.keywords = ["forklift", "forklift-operatoru", "reach-truck", "depo-forklift"]
 
     def _add_lead(self, source, company, title, city, link, text=""):
-        company = (company or "Belirtilmemiş Firma").strip()[:60]
+        company = (company or "Potansiyel Firma").strip()[:60]
         title = (title or "Forklift Operatörü").strip()[:60]
         city = (city or "İstanbul / Türkiye").strip()[:40]
 
@@ -33,105 +31,97 @@ class JobLeadScraper:
             "company_name": company,
             "job_title": title,
             "city": city,
-            "job_url": link or "https://www.eleman.net",
+            "job_url": link,
             "direct_phone": phone or "İlanda Yok"
         })
 
     def scrape_eleman_net(self):
-        """Eleman.net üzerinden birden fazla sayfa ve terim tarar."""
-        print("[+] Eleman.net çoklu sayfa taraması başlatıldı...")
-        
-        search_terms = ["forklift", "forklift operatoru", "reach truck"]
-        for term in search_terms:
+        """Eleman.net kategori sayfalarından çoklu sayfa taraması yapar."""
+        print("[+] Eleman.net taranıyor...")
+        base_urls = [
+            "https://www.eleman.net/forklift-operatoru-is-ilanlari",
+            "https://www.eleman.net/reach-truck-operatoru-is-ilanlari"
+        ]
+
+        for base_url in base_urls:
             for page in range(1, 4):  # İlk 3 sayfa
-                url = f"https://www.eleman.net/is-ilanlari?kelime={requests.utils.quote(term)}&sayfa={page}"
+                url = f"{base_url}?sayfa={page}" if page > 1 else base_url
                 try:
-                    res = requests.get(url, headers=self.headers, timeout=12)
+                    res = requests.get(url, headers=self.headers, timeout=10)
                     if res.status_code != 200:
                         continue
 
                     soup = BeautifulSoup(res.text, "html.parser")
+                    cards = soup.find_all(["div", "article"], class_=re.compile(r"item|card|listing|box", re.I))
                     
-                    # Eleman.net ilan kutucukları
-                    job_cards = soup.select("div[class*='job'], div[class*='listing'], a[href*='/is-ilani/'], a[href*='/ilan/']")
-                    
-                    for card in job_cards:
+                    if not cards:
+                        cards = soup.find_all("a", href=re.compile(r"/is-ilani/"))
+
+                    for card in cards:
                         text = card.get_text(" ", strip=True)
-                        if not text or "forklift" not in text.lower() and "reach" not in text.lower():
+                        if not text or len(text) < 15:
                             continue
 
-                        link = card.get("href", "")
+                        link_tag = card if card.name == "a" else card.find("a", href=True)
+                        link = link_tag.get("href", "") if link_tag else ""
                         if link and not link.startswith("http"):
                             link = f"https://www.eleman.net{link}"
 
-                        lines = [line.strip() for line in text.split("  ") if line.strip()]
-                        title = lines[0] if lines else "Forklift Operatörü"
-                        company = lines[1] if len(lines) > 1 else "Potansiyel Firma"
-
-                        self._add_lead("Eleman.net", company, title, "Türkiye", link, text)
-                except Exception as e:
-                    print(f"[-] Eleman.net hata ({term} - s.{page}): {e}")
-
-        print(f"[✓] Eleman.net tamamlandı. Güncel havuz: {len(self.raw_leads)} lead.")
-
-    def scrape_isinolsun(self):
-        """İşinolsun web sitesinden hızlandırılmış (Asset-blocked) Playwright ile veri çeker."""
-        print("[+] Isinolsun.com optimize tarama başlatıldı...")
-        with sync_playwright() as p:
-            browser = p.chromium.launch(
-                headless=True,
-                args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-gpu"]
-            )
-            context = browser.new_context(
-                user_agent=self.headers["User-Agent"],
-                viewport={"width": 1280, "height": 800}
-            )
-            page = context.new_page()
-
-            # Resim, CSS ve fontları engelleyerek sayfayı 1-2 saniyede aç
-            def block_heavy_assets(route):
-                if route.request.resource_type in ["image", "media", "font", "stylesheet"]:
-                    route.abort()
-                else:
-                    route.continue_()
-
-            page.route("**/*", block_heavy_assets)
-
-            queries = ["forklift", "reach-truck"]
-            for q in queries:
-                try:
-                    target_url = f"https://isinolsun.com/is-ilanlari?q={q}"
-                    page.goto(target_url, wait_until="domcontentloaded", timeout=15000)
-                    page.wait_for_timeout(2500)
-
-                    # Sayfayı 2 kez hafifçe kaydır (Lazy load ilanları tetikle)
-                    page.mouse.wheel(0, 1500)
-                    page.wait_for_timeout(1500)
-
-                    cards = page.query_selector_all("article, [data-testid='job-item'], div[class*='jobCard'], a[href*='/is-ilani/']")
-                    for card in cards:
-                        text = card.inner_text()
-                        if not text:
-                            continue
-                        
-                        lines = [l.strip() for l in text.split("\n") if l.strip()]
+                        lines = [line.strip() for line in text.split("  ") if len(line.strip()) > 1]
                         title = lines[0] if lines else "Forklift Operatörü"
                         company = lines[1] if len(lines) > 1 else "Belirtilmemiş Firma"
                         city = lines[2] if len(lines) > 2 else "Türkiye"
 
-                        link_elem = card.query_selector("a") or card
-                        link = link_elem.get_attribute("href") if link_elem else ""
-                        if link and not link.startswith("http"):
-                            link = f"https://isinolsun.com{link}"
+                        if any(k in text.lower() for k in ["forklift", "reach truck", "istif", "operatör"]):
+                            self._add_lead("Eleman.net", company, title, city, link, text)
 
-                        self._add_lead("İşinolsun", company, title, city, link, text)
                 except Exception as e:
-                    print(f"[-] Isinolsun hata ({q}): {e}")
+                    print(f"[-] Eleman.net hata ({url}): {e}")
 
-            browser.close()
-        print(f"[✓] İşinolsun tamamlandı. Toplam ham havuz: {len(self.raw_leads)} lead.")
+        print(f"[✓] Eleman.net tamamlandı. Güncel havuz: {len(self.raw_leads)} lead.")
+
+    def scrape_isbul_net(self):
+        """İşbul.net üzerinden forklift ilanlarını çeker (Hızlı ve engelsiz)."""
+        print("[+] İşbul.net taranıyor...")
+        search_urls = [
+            "https://www.isbul.net/is-ilanlari?aranan_kelime=forklift",
+            "https://www.isbul.net/forklift-operatoru-is-ilanlari"
+        ]
+
+        for target_url in search_urls:
+            for page in range(1, 4):  # İlk 3 sayfa
+                url = f"{target_url}&sayfa={page}" if "?" in target_url else f"{target_url}?sayfa={page}"
+                try:
+                    res = requests.get(url, headers=self.headers, timeout=10)
+                    if res.status_code != 200:
+                        continue
+
+                    soup = BeautifulSoup(res.text, "html.parser")
+                    cards = soup.find_all(["div", "li"], class_=re.compile(r"job|listing|ilan", re.I))
+
+                    for card in cards:
+                        text = card.get_text(" ", strip=True)
+                        if not text or "forklift" not in text.lower():
+                            continue
+
+                        link_tag = card.find("a", href=True)
+                        link = link_tag.get("href", "") if link_tag else ""
+                        if link and not link.startswith("http"):
+                            link = f"https://www.isbul.net{link}"
+
+                        lines = [l.strip() for l in text.split("  ") if l.strip()]
+                        title = lines[0] if lines else "Forklift Operatörü"
+                        company = lines[1] if len(lines) > 1 else "Potansiyel Firma"
+                        city = lines[2] if len(lines) > 2 else "İstanbul / Türkiye"
+
+                        self._add_lead("İşbul.net", company, title, city, link, text)
+
+                except Exception as e:
+                    print(f"[-] İşbul.net hata ({url}): {e}")
+
+        print(f"[✓] İşbul.net tamamlandı. Toplam ham havuz: {len(self.raw_leads)} lead.")
 
     def run_all(self):
         self.scrape_eleman_net()
-        self.scrape_isinolsun()
+        self.scrape_isbul_net()
         return self.raw_leads
