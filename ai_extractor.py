@@ -32,6 +32,28 @@ def format_phone_3322(phone_raw):
         return f"{digits[0:3]} {digits[3]} {digits[4:7]}"
     return ""
 
+def get_best_available_model():
+    """Hesabınızda aktif ve generateContent destekleyen modeli otomatik keşfeder."""
+    try:
+        available_models = []
+        for m in genai.list_models():
+            if "generateContent" in m.supported_generation_methods:
+                available_models.append(m.name)
+        
+        print(f"[*] Hesabınızdaki aktif modeller: {available_models}")
+
+        # Öncelik sırası: flash modelleri -> diğerleri
+        for m_name in available_models:
+            if "flash" in m_name.lower():
+                return m_name
+        
+        if available_models:
+            return available_models[0]
+    except Exception as e:
+        print(f"[-] Model listeleme hatası: {e}")
+        
+    return "models/gemini-1.5-flash"
+
 def extract_leads_with_ai(raw_search_results: list) -> list:
     """Ham arama sonuçlarını Gemini AI ile işleyip saf kurumsal ilanlara dönüştürür."""
     if not GEMINI_API_KEY:
@@ -41,14 +63,8 @@ def extract_leads_with_ai(raw_search_results: list) -> list:
     if not raw_search_results:
         return []
 
-    # Model isimleri sırasıyla denenir
-    candidate_models = [
-        "gemini-1.5-flash-latest",
-        "gemini-1.5-flash",
-        "gemini-2.0-flash",
-        "gemini-1.5-pro-latest",
-        "gemini-pro"
-    ]
+    target_model_name = get_best_available_model()
+    print(f"[+] Kullanılacak model: {target_model_name}")
 
     prompt = f"""
 Sen B2B satış odaklı bir veri analiz uzmanısın.
@@ -79,28 +95,14 @@ JSON Şeması:
 {json.dumps(raw_search_results, ensure_ascii=False, indent=2)}
 """
 
-    response_text = None
-    for model_name in candidate_models:
-        try:
-            model = genai.GenerativeModel(
-                model_name=model_name,
-                generation_config={"response_mime_type": "application/json"}
-            )
-            response = model.generate_content(prompt)
-            if response and response.text:
-                response_text = response.text
-                print(f"[✓] Gemini modeli başarıyla çalıştı: {model_name}")
-                break
-        except Exception as err:
-            print(f"[-] {model_name} denendi, hata: {err}")
-            continue
-
-    if not response_text:
-        print("[-] Hiçbir Gemini modeli yanıt veremedi.")
-        return []
-
     try:
-        parsed_data = json.loads(response_text)
+        model = genai.GenerativeModel(
+            model_name=target_model_name,
+            generation_config={"response_mime_type": "application/json"}
+        )
+        response = model.generate_content(prompt)
+        parsed_data = json.loads(response.text)
+        
         valid_leads = []
         for item in parsed_data:
             if not item.get("is_valid_forklift_job"):
@@ -129,5 +131,5 @@ JSON Şeması:
         return valid_leads
 
     except Exception as e:
-        print(f"[-] JSON parse hatası: {e}")
+        print(f"[-] Gemini AI çıkarma hatası ({target_model_name}): {e}")
         return []
