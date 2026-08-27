@@ -2,30 +2,33 @@ import re
 import requests
 
 def extract_tr_phone(text):
-    """Metin içindeki Türkiye sabit veya mobil telefon numaralarını yakalar."""
+    """Metin içindeki geçerli Türkiye sabit (2XX, 3XX, 4XX), mobil (5XX) ve 850/444 numaralarını ayıklar."""
     if not text:
         return ""
     
+    # 05XX, 02XX, 03XX, 04XX veya 0850 ile başlayan 10 veya 11 haneli kalıplar
     patterns = [
-        r'(?:(?:\+90|0090|0)\s*)?(?:[1-5]\d{2}|850|444)\s*(?:[0-9]\s*){7}',
-        r'\b(?:0\s*)?[2-5]\d{2}[\s.-]?\d{3}[\s.-]?\d{2}[\s.-]?\d{2}\b',
-        r'\b(?:0\s*)?5\d{2}[\s.-]?\d{3}[\s.-]?\d{2}[\s.-]?\d{2}\b'
+        r'(?:(?:\+?90|0)\s*)?([2-5]\d{2})[\s.-]*(\d{3})[\s.-]*(\d{2})[\s.-]*(\d{2})',
+        r'(?:(?:\+?90|0)\s*)?(850)[\s.-]*(\d{3})[\s.-]*(\d{2})[\s.-]*(\d{2})',
+        r'\b(444)[\s.-]*(\d{1})[\s.-]*(\d{3})\b'
     ]
     
     for pattern in patterns:
         match = re.search(pattern, text)
         if match:
             clean_digits = re.sub(r'\D', '', match.group(0))
-            if len(clean_digits) >= 10:
-                return clean_digits
+            if clean_digits.startswith("90") and len(clean_digits) >= 12:
+                clean_digits = clean_digits[2:]
+            elif clean_digits.startswith("0") and len(clean_digits) >= 11:
+                clean_digits = clean_digits[1:]
+            return clean_digits
     return ""
 
 def find_company_phone_online(company_name, city, serpapi_key):
-    """İlanda telefon yoksa, Google üzerinde firmanın santral/şirket numarasını arar."""
     if not serpapi_key or not company_name or len(company_name) < 3:
         return ""
     
-    query = f'"{company_name}" {city} iletişim telefon santral'
+    query = f'"{company_name}" {city} telefon OR iletişim OR santral'
     try:
         params = {
             "engine": "google",
@@ -35,25 +38,22 @@ def find_company_phone_online(company_name, city, serpapi_key):
             "num": "3",
             "api_key": serpapi_key
         }
-        res = requests.get("https://serpapi.com/search", params=params, timeout=6)
+        res = requests.get("https://serpapi.com/search", params=params, timeout=8)
         if res.status_code == 200:
             data = res.json()
             
-            # 1. Google Haritalar / Knowledge Panel Telefonu
             kg = data.get("knowledge_graph", {})
             if kg and "phone" in kg:
                 phone = extract_tr_phone(kg.get("phone"))
                 if phone:
                     return phone
 
-            # 2. İlk 3 Arama Sonucu
             for result in data.get("organic_results", []):
                 snippet_text = f"{result.get('title', '')} {result.get('snippet', '')}"
                 phone = extract_tr_phone(snippet_text)
                 if phone:
                     return phone
     except Exception:
-        # Zaman aşımı veya ağ hatası olursa akışı durdurmadan devam et
         pass
         
     return ""
