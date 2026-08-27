@@ -25,6 +25,8 @@ def format_phone_3322(phone_raw):
         
     if len(digits) == 10:
         return f"{digits[0:3]} {digits[3:6]} {digits[6:8]} {digits[8:10]}"
+    if len(digits) == 7 and digits.startswith("444"):
+        return f"{digits[0:3]} {digits[3]} {digits[4:7]}"
     return ""
 
 def export_leads_to_excel(leads, output_dir="reports"):
