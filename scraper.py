@@ -1,4 +1,5 @@
 import os
+import re
 import requests
 from enricher import extract_tr_phone
 
@@ -13,6 +14,7 @@ class JobLeadScraper:
         title = (title or "Forklift Operatörü").strip()[:60]
         city = (city or "Türkiye").strip()[:40]
 
+        # Temizlik ve mükerrer engelleme
         signature = f"{company.lower()}_{title.lower()}"
         if signature in self.seen_signatures or len(company) < 2:
             return
@@ -29,63 +31,95 @@ class JobLeadScraper:
             "direct_phone": phone or "İlanda Yok"
         })
 
-    def scrape_google_jobs(self):
-        """Türkiye genelindeki forklift ilanlarını Google Jobs üzerinden çeker."""
+    def scrape_serpapi_jobs(self):
+        """Türkiye genelindeki ilanları hem hızlı arama hem Google Jobs ile toplar."""
         if not self.serpapi_key:
             print("[-] SERPAPI_KEY bulunamadı!")
             return
 
-        print("[+] Google Jobs motoru taranıyor...")
-        
-        # Türkiye'nin sanayi ve lojistik merkezlerine göre genişletilmiş sorgular
-        queries = [
-            "forklift operatörü İstanbul",
-            "forklift şoförü Kocaeli Gebze",
-            "forklift operatörü Bursa",
-            "forklift operatörü İzmir",
-            "forklift operatörü Ankara",
-            "reach truck operatörü Türkiye",
-            "depo forklift operatörü Türkiye"
+        print("[+] Türkiye geneli ilan taraması başlatıldı...")
+
+        # 1. Hızlı İlan Taraması (Eleman.net, Kariyer.net, İşinolsun - 1 saniyede biter)
+        google_queries = [
+            'forklift operatörü (site:eleman.net OR site:kariyer.net OR site:isinolsun.com OR site:secretcv.com)',
+            'reach truck operatörü (site:eleman.net OR site:kariyer.net OR site:isinolsun.com)',
+            'depo forklift şoförü (site:eleman.net OR site:kariyer.net OR site:isinolsun.com)'
         ]
 
-        for q in queries:
+        for q in google_queries:
+            try:
+                params = {
+                    "engine": "google",
+                    "q": q,
+                    "hl": "tr",
+                    "gl": "tr",
+                    "num": "20",
+                    "api_key": self.serpapi_key
+                }
+                res = requests.get("https://serpapi.com/search", params=params, timeout=30)
+                if res.status_code == 200:
+                    data = res.json()
+                    results = data.get("organic_results", [])
+                    print(f"[+] '{q[:32]}...' -> {len(results)} ilan yakalandı.")
+                    for r in results:
+                        raw_title = r.get("title", "")
+                        snippet = r.get("snippet", "")
+                        link = r.get("link", "")
+
+                        # Başlıktan firma adını ayıkla
+                        parts = [p.strip() for p in re.split(r'[-–|]', raw_title) if p.strip()]
+                        title = parts[0] if parts else "Forklift Operatörü"
+                        company = "Potansiyel Firma"
+                        if len(parts) > 1:
+                            for p in parts[1:]:
+                                if not any(site in p.lower() for site in ["eleman", "kariyer", "isinolsun", "secretcv", "ilan"]):
+                                    company = p
+                                    break
+
+                        # Lokasyon yakalama
+                        city = "İstanbul / Türkiye"
+                        for c in ["İstanbul", "Kocaeli", "Gebze", "Bursa", "İzmir", "Ankara", "Tekirdağ", "Manisa"]:
+                            if c.lower() in (raw_title + " " + snippet).lower():
+                                city = c
+                                break
+
+                        self._add_lead("Web İlan Havuzu", company, title, city, link, f"{raw_title} {snippet}")
+            except Exception as e:
+                print(f"[-] Arama hatası: {e}")
+
+        # 2. Google Jobs Havuzu (Genişletilmiş 50s timeout)
+        jobs_queries = [
+            "forklift operatörü Türkiye",
+            "reach truck operatörü İstanbul"
+        ]
+
+        for jq in jobs_queries:
             try:
                 params = {
                     "engine": "google_jobs",
-                    "q": q,
+                    "q": jq,
                     "hl": "tr",
                     "api_key": self.serpapi_key
                 }
-                res = requests.get("https://serpapi.com/search", params=params, timeout=20)
-                data = res.json()
+                res = requests.get("https://serpapi.com/search", params=params, timeout=50)
+                if res.status_code == 200:
+                    data = res.json()
+                    jobs = data.get("jobs_results", [])
+                    print(f"[+] Google Jobs '{jq}' -> {len(jobs)} ilan yakalandı.")
+                    for j in jobs:
+                        title = j.get("title", "Forklift Operatörü")
+                        company = j.get("company_name", "Potansiyel Firma")
+                        location = j.get("location", "Türkiye")
+                        desc = j.get("description", "")
+                        apply_opts = j.get("apply_options", [])
+                        link = apply_opts[0].get("link", "") if apply_opts else j.get("share_link", "https://www.google.com")
 
-                if res.status_code != 200 or "error" in data:
-                    print(f"[-] Hata ({q}): {data.get('error', res.text[:100])}")
-                    continue
-
-                jobs = data.get("jobs_results", [])
-                print(f"[+] '{q}' sorgusundan {len(jobs)} ilan çekildi.")
-                
-                for j in jobs:
-                    title = j.get("title", "Forklift Operatörü")
-                    company = j.get("company_name", "Potansiyel Firma")
-                    location = j.get("location", "Türkiye")
-                    desc = j.get("description", "")
-                    
-                    link = ""
-                    apply_options = j.get("apply_options", [])
-                    if apply_options:
-                        link = apply_options[0].get("link", "")
-                    if not link:
-                        link = j.get("share_link", "https://www.google.com")
-
-                    self._add_lead("Google Jobs", company, title, location, link, f"{desc} {company}")
-
+                        self._add_lead("Google Jobs", company, title, location, link, f"{desc} {company}")
             except Exception as e:
-                print(f"[-] İstek Hatası ({q}): {e}")
+                print(f"[-] Google Jobs hatası ({jq}): {e}")
 
-        print(f"[✓] Tarama tamamlandı. Toplam bulunan lead: {len(self.raw_leads)}")
+        print(f"[✓] Tarama tamamlandı. Toplam toplanan lead: {len(self.raw_leads)}")
 
     def run_all(self):
-        self.scrape_google_jobs()
+        self.scrape_serpapi_jobs()
         return self.raw_leads
