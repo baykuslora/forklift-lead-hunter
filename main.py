@@ -9,31 +9,29 @@ def main():
     print("=== Forklift Lead Generation & Intelligence Pipeline Başlatıldı ===")
     serpapi_key = os.getenv("SERPAPI_KEY", "").strip()
 
-    # 1. LinkedIn, Indeed, Kariyer.net, Eleman.net'ten temiz ilanları topla
+    # 1. LinkedIn, Indeed, Kariyer.net, Eleman.net, Secretcv'den temiz tekil ilanları topla
     scraper = JobLeadScraper()
     raw_leads = scraper.run_all()
-    print(f"[*] Bu taramada {len(raw_leads)} adet saf firma/ilan yakalandı.")
 
-    # 2. İletişim Bilgisi Zenginleştirme (İlanda telefon yoksa internetten bul)
-    print("[+] İletişim bilgisi eksik firmalar için Google santral araması yapılıyor...")
+    # 2. İletişim Bilgilerini Zenginleştir
+    print("[+] İletişim bilgisi eksik ilanlar için Google santral sorgusu yapılıyor...")
     enriched_leads = []
     for lead in raw_leads:
         phone = lead.get("direct_phone", "")
         company = lead.get("company_name", "")
         city = lead.get("city", "")
 
-        # İlanda telefon bulunamadıysa Google üzerinden araştır
-        if not phone and company:
+        if not phone and company and len(company) > 3:
             online_phone = find_company_phone_online(company, city, serpapi_key)
             lead["direct_phone"] = online_phone
 
         enriched_leads.append(lead)
 
-    # 3. Veritabanına kaydet (Son 45 günün mükerrerlerini engeller)
+    # 3. Mükerrer Filtresi ve Veritabanı Kaydı
     db = LeadDatabase()
     db.filter_and_save(enriched_leads, retention_days=45)
 
-    # 4. Kümülatif Master Listeyi Al (Tüm zenginleştirilmiş geçmiş havuz)
+    # 4. Kümülatif Master Listeyi Al
     master_leads = db.get_all_active_leads(retention_days=45)
     print(f"[*] Excel'e aktarılacak toplam net lead sayısı: {len(master_leads)}")
 
