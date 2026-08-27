@@ -30,27 +30,29 @@ def format_phone_3322(phone_raw):
     return ""
 
 def get_active_gemini_models():
-    """Google hesabınızdaki aktif ve erişilebilir modelleri API'den dinamik sorgular."""
+    """Çalışan hızlı modeli ilk sıraya alarak pipeline süresini kısaltır."""
+    priority_models = ["gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-1.5-flash"]
     if not GEMINI_API_KEY:
-        return ["gemini-2.5-flash", "gemini-2.5-pro"]
+        return priority_models
     try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_API_KEY}"
-        resp = requests.get(url, timeout=10)
+        resp = requests.get(url, timeout=5)
         if resp.status_code == 200:
             models_data = resp.json().get("models", [])
-            active_names = []
-            for m in models_data:
-                name = m.get("name", "").replace("models/", "")
-                if "generateContent" in m.get("supportedGenerationMethods", []):
-                    active_names.append(name)
-            if active_names:
-                # Flash modellerini öne al
-                active_names.sort(key=lambda x: ("flash" not in x.lower(), x))
-                print(f"[*] Tespit edilen aktif modeller: {active_names[:3]}")
-                return active_names
-    except Exception as e:
-        print(f"[-] Model listesi alınamadı: {e}")
-    return ["gemini-2.5-flash", "gemini-2.5-pro"]
+            active_names = [
+                m.get("name", "").replace("models/", "") 
+                for m in models_data 
+                if "generateContent" in m.get("supportedGenerationMethods", [])
+            ]
+            sorted_models = [m for m in priority_models if m in active_names]
+            for m in active_names:
+                if m not in sorted_models and "flash" in m.lower() and "image" not in m.lower() and "tts" not in m.lower():
+                    sorted_models.append(m)
+            if sorted_models:
+                return sorted_models
+    except Exception:
+        pass
+    return priority_models
 
 def call_gemini_rest(prompt: str) -> str:
     """Google Gemini REST API üzerinden JSON yanıtı alır."""
@@ -71,21 +73,18 @@ def call_gemini_rest(prompt: str) -> str:
             }
         }
         try:
-            resp = requests.post(url, headers=headers, json=payload, timeout=25)
+            resp = requests.post(url, headers=headers, json=payload, timeout=20)
             if resp.status_code == 200:
                 data = resp.json()
                 print(f"[✓] Gemini API ({model}) ile başarıyla yanıt alındı.")
                 return data["candidates"][0]["content"]["parts"][0]["text"]
-            else:
-                print(f"[-] {model} HTTP {resp.status_code}: {resp.text[:100]}")
-        except Exception as e:
-            print(f"[-] {model} bağlantı hatası: {e}")
+        except Exception:
             continue
 
     return ""
 
 def fallback_parser(raw_search_results: list) -> list:
-    """Yapay zeka yanıt veremezse 60 ilanı çöpe atmayıp kural tabanlı kurtaran emniyet motoru."""
+    """Yapay zeka yanıt veremezse devreye giren emniyet motoru."""
     print("[*] Emniyet motoru devreye girdi, ilanlar doğrudan ayrıştırılıyor...")
     leads = []
     
@@ -100,7 +99,6 @@ def fallback_parser(raw_search_results: list) -> list:
         link = item.get("link", "")
         snippet = item.get("snippet", "")
         
-        # Site ve pozisyon kalıntılarını temizle
         clean_title = re.sub(r'\s*\|\s*(Kariyer\.net|LinkedIn|Eleman\.net|Indeed|Secretcv|İşinolsun).*$', '', title, flags=re.I)
         clean_title = re.sub(r'\s*-\s*(Kariyer\.net|LinkedIn|Eleman\.net|Indeed|Secretcv|İşinolsun).*$', '', clean_title, flags=re.I)
         
@@ -114,14 +112,12 @@ def fallback_parser(raw_search_results: list) -> list:
                 break
                 
         if company and len(company) >= 3:
-            # Şehir tespiti
             city = "İSTANBUL"
             for c in ["KOCAELİ", "BURSA", "İZMİR", "ANKARA", "TEKİRDAĞ", "SAKARYA", "MANİSA"]:
                 if c in tr_upper(title + " " + snippet):
                     city = c
                     break
                     
-            # Kaynak site tespiti
             source_site = "WEB"
             if "kariyer.net" in link: source_site = "KARİYER.NET"
             elif "eleman.net" in link: source_site = "ELEMAN.NET"
