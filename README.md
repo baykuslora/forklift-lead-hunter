@@ -93,7 +93,6 @@ Sistem tamamen sunucusuz (serverless) bir yapıda, her Cuma günü Türkiye saat
 * **Amaç:** Toplanan temiz lead havuzunu satış ekiplerinin anında aksiyon alabileceği bir formata dönüştürmek.
 * **Teknik Çözüm:** 
   * OpenPyXL ile 5 sütunlu (`FİRMA İSMİ`, `KONUM`, `İLETİŞİM BİLGİSİ`, `İLANIN ALINDIĞI WEBSİTESİ`, `İLAN LİNKİ`) Excel tablosu oluşturulur.
-  * Başlıklar koyu kurumsal renkle biçimlendirilir, sütun genişlikleri içeriğe göre otomatik ayarlanır.
   * Hazırlanan dosya dinamik HTML özet metniyle birlikte `RECIPIENTS` listesindeki tüm yetkililere SMTP TLS şifrelemesiyle gönderilir.
 
 ### 5.6. `.github/workflows/weekly_leads.yml` — Sunucusuz CI/CD ve State Persistence
