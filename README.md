@@ -20,7 +20,7 @@
 
 Bu proje; kendi bünyesinde lojistik, depolama veya üretim operasyonları yürüten ve endüstriyel istifleme makinelerine (forklift, reach truck vb.) aktif olarak ihtiyaç duyan potansiyel kurumsal müşterileri tespit etmek amacıyla geliştirilmiş uçtan uca otonom bir veri hattıdır (Data Pipeline). 
 
-Sistem; kariyer platformlarındaki istihdam hareketlerini (Hiring Intent) tarayarak makine ihtiyacı doğan müşterileri bulur ve ham veriyi **Google Gemini LLM** ile analiz edip temizler. Eğer iş ilanında iletişim bilgisi veya adres verilmemişse; sistem şirket ismini algılayıp arka planda otonom bir internet araması (Google Search) başlatır ve firmanın genel merkez santral numarasını bularak tabloya ekler (Data Enrichment). Son olarak, aynı firmanın her hafta tekrar tekrar raporlara girmesini (duplike kayıtları) engellemek için 30 günlük hafızaya sahip bir veritabanı kullanır ve sadece yeni müşteri fırsatlarını ilgili paydaşlara Excel formatında otomatik raporlar.
+Sistem; kariyer platformlarındaki istihdam hareketlerini (Hiring Intent) tarayarak makine ihtiyacı doğan müşterileri bulur ve ham veriyi **Google Gemini LLM** ile analiz edip temizler. Eğer iş ilanında iletişim bilgisi veya adres verilmemişse; sistem şirket ismini algılayıp arka planda otonom bir Google Search başlatır ve firmanın genel merkez santral numarasını bularak tabloya ekler (Data Enrichment). Son olarak, aynı firmanın her hafta tekrar tekrar raporlara girmesini (duplike kayıtları) engellemek için 30 günlük hafızaya sahip bir veritabanı kullanır ve sadece yeni müşteri fırsatlarını satış ekibine haftalık olarak Excel formatında otomatik raporlar.
 
 ---
 
