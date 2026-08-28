@@ -102,6 +102,10 @@ Sistem tamamen sunucusuz (serverless) bir yapıda, her Cuma günü Türkiye saat
   * `cron: '0 6 * * 5'` kuralı ile her Cuma Türkiye saatiyle 09:00'da (06:00 UTC) tetiklenir.
   * Ubuntu sanal makinesinde Python ortamı ayağa kaldırılır, kodlar çalıştırılır.
   * Çalışma bittiğinde güncellenen `data/leads_history.db` dosyası `github-actions[bot]` tarafından GitHub reposuna geri `commit` ve `push` edilir. Bu sayede sunucusuz mimaride dahi veritabanı hafızası korunur.
+ 
+### 5.7 `data/leads_history.db` - 30 günlük döngüsel hafıza veritabanı.
+
+### 5.8 `main.py` - Tüm pipeline'ı sırasıyla çalıştıran ana şef.
 
 ---
 
