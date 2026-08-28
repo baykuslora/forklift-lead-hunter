@@ -53,6 +53,41 @@ Sistem tamamen sunucusuz (serverless) bir yapıda, her Cuma günü Türkiye saat
   * Özel formatlanmış Excel tablosu oluşturulur ve ekibe güvenli SMTP bağlantısıyla iletilir.
 
 ---
+### 4.1. `scraper.py` — Arama Motoru Veri Toplama Katmanı
+* **Amaç:** Hedef anahtar kelimelerle (`forklift operatörü`, `istif makinesi operatörü`, `depo elemanı arayanlar`) 6 büyük platformu taramak.
+* **Teknik Çözüm:** Doğrudan sitelerin HTML kodunu kazımak yerine (sürekli değişen DOM yapısı ve bot engelleri sebebiyle), Google Arama Operatörleri (`site:kariyer.net`, `site:tr.indeed.com` vb.) kullanılarak SerpApi üzerinden yapılandırılmış arama sonuçları çekilmiştir.
+
+### 4.2. `ai_extractor.py` — Yapay Zeka Tabanlı Filtreleme Motoru
+* **Amaç:** Ham arama sonuçlarındaki karmaşık başlıklardan gerçek işveren firmaları ayıklamak.
+* **Teknik Çözüm:** Google Gemini Flash modeline katı bir sistem rolü (System Prompt) ve `JSON Schema` tanımlanmıştır. Model; "Anadolu Yakası Forklift İlanları", "Örnek CV'ler", "Danışmanlık Portalı" gibi ilan olmayan içerikleri eler; sadece B2B potansiyeli taşıyan gerçek ticari unvanları JSON formatında çıktı verir.
+
+### 4.3. `enricher.py` — Otonom Veri Zenginleştirme
+* **Amaç:** İlan metninde telefon numarası veya merkez şehri yazmayan şirketleri eksiksiz hale getirmek.
+* **Teknik Çözüm:** Eksik verisi olan her şirket için ikincil bir alt arama tetiklenir. Google Kurumsal İşletme Kartları (Google Knowledge Graph) taranarak şirketin resmi müşteri hizmetleri/santral numarası ve genel merkez ili bulunarak tabloya eklenir.
+
+### 4.4. `database.py` — 30 Günlük Döngüsel Hafıza ve Normalizasyon
+* **Amaç:** Aynı şirketin her hafta tekrar tekrar raporlanmasını önlemek.
+* **Teknik Çözüm:** 
+  * Şirket unvanlarındaki kurumsal uzantılar (`A.Ş.`, `LTD. ŞTİ.`, `SAN. VE TİC.`) regex ile temizlenir (`normalize_company_name`).
+  * SQLite üzerinde `leads` tablosunda `(company_name, date_added)` kaydı tutulur.
+  * Son 30 gün içinde gönderilmiş olan firmalar filtrelenir.
+  * 30 günü aşan eski kayıtlar otomatik temizlenerek (TTL mantığı) veritabanı boyutu optimum tutulur.
+
+### 4.5. `mailer.py` — Kurumsal Raporlama ve Dağıtım
+* **Amaç:** Toplanan temiz lead havuzunu satış ekiplerinin anında aksiyon alabileceği bir formata dönüştürmek.
+* **Teknik Çözüm:** 
+  * OpenPyXL ile 5 sütunlu (`FİRMA İSMİ`, `KONUM`, `İLETİŞİM BİLGİSİ`, `İLANIN ALINDIĞI WEBSİTESİ`, `İLAN LİNKİ`) Excel tablosu oluşturulur.
+  * Başlıklar koyu kurumsal renkle biçimlendirilir, sütun genişlikleri içeriğe göre otomatik ayarlanır.
+  * Hazırlanan dosya dinamik HTML özet metniyle birlikte `RECIPIENTS` listesindeki tüm yetkililere SMTP TLS şifrelemesiyle gönderilir.
+
+### 4.6. `.github/workflows/weekly_leads.yml` — Sunucusuz CI/CD ve State Persistence
+* **Amaç:** Sistemin harici bir sanal sunucu kiralamadan her Cuma sabahı kendiliğinden çalışması.
+* **Teknik Çözüm:** 
+  * `cron: '0 6 * * 5'` kuralı ile her Cuma Türkiye saatiyle 09:00'da (06:00 UTC) tetiklenir.
+  * Ubuntu sanal makinesinde Python ortamı ayağa kaldırılır, kodlar çalıştırılır.
+  * Çalışma bittiğinde güncellenen `data/leads_history.db` dosyası `github-actions[bot]` tarafından GitHub reposuna geri `commit` ve `push` edilir. Bu sayede sunucusuz mimaride dahi veritabanı hafızası korunur.
+
+---
 
 ## 🛠️ 4. Kullanılan Teknolojiler 
 
