@@ -2,7 +2,7 @@ name: Weekly Forklift Leads Pipeline
 
 on:
   schedule:
-    # Test: Cuma Türkiye saati ile 11:00 (UTC 08:00)
+  //test cuma 9:00
     - cron: '0 8 * * 5'
   workflow_dispatch:
 
