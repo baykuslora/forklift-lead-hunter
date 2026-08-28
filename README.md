@@ -53,6 +53,22 @@ Sistem tamamen sunucusuz (serverless) bir yapıda, her Cuma günü Türkiye saat
   * Özel formatlanmış Excel tablosu oluşturulur ve ekibe güvenli SMTP bağlantısıyla iletilir.
 
 ---
+
+## 🛠️ 4. Kullanılan Teknolojiler 
+
+| Teknoloji | Görevi ve Projedeki Rolü |
+| :--- | :--- |
+| **Python 3.11** | Tüm veri hattının omurgası ve orkestrasyonu. |
+| **Google Gemini API** | Kural tabanlı filtrelerin (Regex) yetersiz kaldığı noktalarda anlamsal analiz ve ayrıştırma. |
+| **SerpApi** | Kariyer sitelerinin bot korumalarına takılmadan Google indeksine doğrudan erişim. |
+| **SQLite3** | Şirketlerin duplike (tekrar eden) şekilde raporlanmasını önleyen 30 günlük durum hafızası. |
+| **OpenPyXL** | Sütun genişlikleri ayarlanmış, kurumsal temalı .xlsx formatlı çıktı üretimi. |
+| **GitHub Actions** | Bulut CI/CD altyapısı ile sunucusuz (serverless) zamanlanmış görev (Cron Job) yürütme. |
+
+---
+
+## 📂 5. Proje Dizini
+
 ### 4.1. `scraper.py` — Arama Motoru Veri Toplama Katmanı
 * **Amaç:** Hedef anahtar kelimelerle (`forklift operatörü`, `istif makinesi operatörü`, `depo elemanı arayanlar`) 6 büyük platformu taramak.
 * **Teknik Çözüm:** Doğrudan sitelerin HTML kodunu kazımak yerine (sürekli değişen DOM yapısı ve bot engelleri sebebiyle), Google Arama Operatörleri (`site:kariyer.net`, `site:tr.indeed.com` vb.) kullanılarak SerpApi üzerinden yapılandırılmış arama sonuçları çekilmiştir.
@@ -88,30 +104,6 @@ Sistem tamamen sunucusuz (serverless) bir yapıda, her Cuma günü Türkiye saat
   * Çalışma bittiğinde güncellenen `data/leads_history.db` dosyası `github-actions[bot]` tarafından GitHub reposuna geri `commit` ve `push` edilir. Bu sayede sunucusuz mimaride dahi veritabanı hafızası korunur.
 
 ---
-
-## 🛠️ 4. Kullanılan Teknolojiler 
-
-| Teknoloji | Görevi ve Projedeki Rolü |
-| :--- | :--- |
-| **Python 3.11** | Tüm veri hattının omurgası ve orkestrasyonu. |
-| **Google Gemini API** | Kural tabanlı filtrelerin (Regex) yetersiz kaldığı noktalarda anlamsal analiz ve ayrıştırma. |
-| **SerpApi** | Kariyer sitelerinin bot korumalarına takılmadan Google indeksine doğrudan erişim. |
-| **SQLite3** | Şirketlerin duplike (tekrar eden) şekilde raporlanmasını önleyen 30 günlük durum hafızası. |
-| **OpenPyXL** | Sütun genişlikleri ayarlanmış, kurumsal temalı .xlsx formatlı çıktı üretimi. |
-| **GitHub Actions** | Bulut CI/CD altyapısı ile sunucusuz (serverless) zamanlanmış görev (Cron Job) yürütme. |
-
----
-
-## 📂 5. Proje Dizini
-
-* **`.github/workflows/weekly_leads.yml`**: Otomasyonun bulut zamanlayıcı ve CI/CD konfigürasyonları.
-* **`data/leads_history.db`**: Duplike gönderimleri engelleyen 30 günlük hafıza veritabanı.
-* **`scraper.py`**: Arama motoru üzerinden ham ilanları çeken modül.
-* **`ai_extractor.py`**: Gemini LLM ile B2B Lead niteliği taşımayan verileri eleyen motor.
-* **`enricher.py`**: İlanlarda eksik olan telefon ve lokasyon bilgilerini Google üzerinden aratıp bulan "Enrichment" modülü.
-* **`database.py`**: İsim normalizasyonu ve duplike firma kontrolünü yapan katman.
-* **`mailer.py`**: Excel tablosunu oluşturup SMTP üzerinden e-posta dağıtımını gerçekleştiren modül.
-* **`main.py`**: Tüm pipeline'ı sırasıyla çalıştıran ana şef.
 
 ---
 
