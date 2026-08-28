@@ -14,7 +14,7 @@
 
 ## 🎯 1. Yönetici Özeti (TL;DR)
 
-Bu proje; intralojistik, malzeme elleçleme ve forklift sektöründe faaliyet gösteren kurumsal firmaları tespit etmek amacıyla geliştirilmiş uçtan uca otonom bir veri hattıdır (Data Pipeline). 
+Bu proje; intralojistik, istifleme teknolojileri ve endüstriyel depo ekipmanları sektöründe faaliyet gösteren kurumsal firmaları tespit etmek amacıyla geliştirilmiş uçtan uca otonom bir veri hattıdır (Data Pipeline). 
 
 Sistem; kariyer platformlarındaki istihdam hareketlerini (Hiring Intent) tarayarak potansiyel müşterileri bulur, ham veriyi **Google Gemini LLM** ile analiz edip temizler, eksik merkez telefon ve lokasyon bilgilerini otonom olarak zenginleştirir (Data Enrichment). Ardından 30 günlük döngüsel veritabanı ile tekilleştirip, her hafta ilgili paydaşlara kurumsal Excel formatında otomatik raporlar.
 
