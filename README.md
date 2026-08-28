@@ -71,7 +71,7 @@ Sistem tamamen sunucusuz (serverless) bir yapıda, her Cuma günü Türkiye saat
 
 ### 5.1. `scraper.py` — Arama Motoru Veri Toplama Katmanı
 * **Amaç:** Hedef anahtar kelimelerle (`forklift operatörü`, `istif makinesi operatörü`, `depo elemanı arayanlar`) 6 büyük platformu taramak.
-* **Teknik Çözüm:** Doğrudan sitelerin HTML kodunu kazımak yerine (sürekli değişen DOM yapısı ve bot engelleri sebebiyle), Google Arama Operatörleri (`site:kariyer.net`, `site:tr.indeed.com` vb.) kullanılarak SerpApi üzerinden yapılandırılmış arama sonuçları çekilmiştir.
+* **Teknik Çözüm:** Doğrudan sitelerin HTML kodunu kazımak yerine (sürekli değişen DOM yapısı ve bot engelleri sebebiyle), Google Arama Operatörleri kullanılarak SerpApi üzerinden yapılandırılmış arama sonuçları çekilmiştir.
 
 ### 5.2. `ai_extractor.py` — Yapay Zeka Tabanlı Filtreleme Motoru
 * **Amaç:** Ham arama sonuçlarındaki karmaşık başlıklardan gerçek işveren firmaları ayıklamak.
