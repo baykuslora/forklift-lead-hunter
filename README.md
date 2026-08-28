@@ -26,7 +26,7 @@ Sistem; kariyer platformlarındaki istihdam hareketlerini (Hiring Intent) taraya
 
 ## ⚖️ 2. Problem ve Çözüm (Neden Geliştirildi?)
 
-B2B satış ve iş geliştirme süreçlerinde bir şirketin "Forklift Operatörü" veya "Depo Elemanı" araması, o şirketin depo hacmini büyüttüğüne, yeni bir tesise geçtiğine veya mevcut makine filosunu genişlettiğine dair **en güçlü Intent Data (Satın Alma Niyeti Verisi)** niteliğindedir.
+B2B satış ve iş geliştirme süreçlerinde bir şirketin "Forklift Operatörü" veya "Depo Elemanı" araması, o şirketin depo hacmini büyüttüğüne, yeni bir tesise geçtiğine veya mevcut makine filosunu genişlettiğine dair **en güçlü Intent Data (Satın Alma Verisi)** niteliğindedir.
 
 | Geleneksel Süreç (Manuel Araştırma) | Otonom Sistem (B2B Lead Hunter) |
 | :--- | :--- |
