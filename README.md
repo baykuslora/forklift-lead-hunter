@@ -58,7 +58,7 @@ Sistem tamamen sunucusuz (serverless) bir yapıda, her Cuma günü Türkiye saat
 
 | Teknoloji | Görevi ve Projedeki Rolü |
 | :--- | :--- |
-| **Python 3.11** | Tüm veri hattının omurgası ve orkestrasyonu (Orchestrator). |
+| **Python 3.11** | Tüm veri hattının omurgası ve orkestrasyonu. |
 | **Google Gemini API** | Kural tabanlı filtrelerin (Regex) yetersiz kaldığı noktalarda anlamsal analiz ve ayrıştırma. |
 | **SerpApi** | Kariyer sitelerinin bot korumalarına takılmadan Google indeksine doğrudan erişim. |
 | **SQLite3** | Şirketlerin duplike (tekrar eden) şekilde raporlanmasını önleyen 30 günlük durum hafızası. |
