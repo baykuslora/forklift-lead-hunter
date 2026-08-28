@@ -3,7 +3,7 @@
 # 🚜 B2B Lead Hunter: Otonom Pazar Analizi ve Lead Intelligence Pipeline
 
 > **Yapay Zeka Destekli, Sunucusuz (Serverless) B2B Satış Geliştirme Otomasyonu**
-> Hiring Intent (işe alım niyeti) verilerini satış fırsatlarına dönüştüren uçtan uca B2B Lead Pipeline sistemi.
+> Hiring Intent (işe alım) verilerini satış fırsatlarına dönüştüren uçtan uca B2B Lead Pipeline sistemi.
 
 
 
