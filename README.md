@@ -104,8 +104,12 @@ Sistem tamamen sunucusuz (serverless) bir yapıda, her Cuma günü Türkiye saat
   * Çalışma bittiğinde güncellenen `data/leads_history.db` dosyası `github-actions[bot]` tarafından GitHub reposuna geri `commit` ve `push` edilir. Bu sayede sunucusuz mimaride dahi veritabanı hafızası korunur.
  
 ### 5.7 `data/leads_history.db` - 30 günlük döngüsel hafıza veritabanı.
+* **Amaç:** Satış ekibine aynı firmaların her hafta tekrar tekrar (duplike) gönderilmesini engellemek ve sistemin geçmiş operasyon hafızasını tutmak.
+* **Teknik Çözüm:** SQLite tabanlı, hafif bir "Time-to-Live (TTL)" veritabanı olarak tasarlandı. Sistem, yeni bulduğu bir firmayı raporlamak üzere Excel'e eklemeden önce bu dosyayı sorgular. Eğer firma son 30 gün içinde bu deftere kaydedilmişse anında listeden elenir. Veritabanı dosyasının sonsuza kadar büyüyüp sistemi yavaşlatmasını önlemek için, 30 günü dolduran eski kayıtlar otonom olarak (kendi kendine) silinir.
 
 ### 5.8 `main.py` - Tüm pipeline'ı sırasıyla çalıştıran ana şef.
+* **Amaç:** Birbirinden bağımsız görevleri olan tüm modülleri doğru sırayla, uyum içinde ve hatasız çalıştıran ana kontrol merkezini kurgulamak.
+* **Teknik Çözüm:** Merkezi bir yürütücü script olarak kodlandı. GitHub Actions her Cuma sabahı tetiklendiğinde sadece bu dosyaya "Çalış" emrini verir. main.py süreci adım adım yönetir: Önce scraper.py ile ham ilanları toplar, ardından ai_extractor.py ile Gemini'a veriyi temizletir, enricher.py ile eksik telefonları Google'da otonom aratır, database.py ile duplikeleri süzer ve elde kalan yepyeni müşteri listesini mailer.py üzerinden kurumsal bir Excel'e dönüştürerek e-posta dağıtımını tamamlar. Sistemin tüm hata yönetimi (Error Handling) bu dosya üzerinden kontrol edilir.
 
 ---
 
