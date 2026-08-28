@@ -92,5 +92,5 @@ Sistem mimarisi kurumsal veri güvenliği standartlarına tam uyumlu olarak tasa
 
 * ⏱️ **Operasyonel Verimlilik:** Manuel süreçte haftada 3-4 saat alan araştırma süresi **2 dakikaya** indirildi.
 * 🎯 **%100 Doğrulanmış Lead (Qualified Leads):** AI destekli anlamsal ayrıştırma sayesinde satış ekibine giden veri havuzundaki gürültü tamamen yok edildi.
-* 📞 **Satışa Hazır Pipeline (Sales-Ready Data):** Arka plan taramasıyla bulunan iletişim bilgileri sayesinde satış ekibinin tekrar numara aramadan doğrudan cold-call (soğuk arama) yapabileceği bir standart yakalandı.
-* 💰 **Sıfır Maliyet:** Sunucu veya bulut makine kiralamak yerine GitHub Actions kullanılarak tamamen masrafsız ve sürdürülebilir bir altyapı kuruldu.
+* 📞 **Satışa Hazır Pipeline (Sales-Ready Data):** Arka plan taramasıyla bulunan iletişim bilgileri sayesinde satış ekibinin tekrar numara aramadan doğrudan arama yapabileceği bir standart yakalandı.
+* 💰 **Sıfır Maliyet:** Sunucu veya bulut makine kiralamak yerine GitHub Actions kullanılarak tamamen masrafsız, sürdürülebilir ve kalıcı bir altyapı kuruldu.
