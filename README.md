@@ -33,7 +33,7 @@ B2B satış ve iş geliştirme süreçlerinde bir şirketin "Forklift Operatör�
 | **Zaman Kaybı:** 6 farklı platformu tek tek taramak haftalık 3-4 saatlik operasyonel yük yaratır. | **Hız (Zero-Touch):** Tüm süreç sıfır insan müdahalesiyle sadece 2 dakikada tamamlanır. |
 | **Veri Kirliliği:** CV havuzları ve danışmanlık firmaları lead listesini kirletir. | **Temiz Veri (Qualified Leads):** Gemini LLM sayesinde çöp ilanlar %100 oranında elenir. |
 | **Eksik İletişim:** İlanlarda şirket merkezinin telefonu genelde yazmaz. | **Arka Plan Araması (Enrichment):** İlanda numara yoksa, sistem internette firmayı kendi aratıp santral numarasını bulur. |
-| **Tekrar Eden İş:** Aynı firmalar haftalarca listeye tekrar tekrar girebilir. | **Hafıza (Stateful DB):** 30 günlük akıllı SQLite veritabanı duplike (mükerrer) kayıtları tamamen engeller. |
+| **Tekrar Eden İş:** Aynı firmalar haftalarca listeye tekrar tekrar girebilir. | **Hafıza (Stateful DB):** 30 günlük akıllı SQLite veritabanı duplike kayıtları tamamen engeller. |
 
 ---
 
