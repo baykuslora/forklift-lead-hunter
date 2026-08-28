@@ -50,7 +50,7 @@ Sistem tamamen sunucusuz (serverless) bir yapıda, her Cuma günü Türkiye saat
 * **Adım 4: Duplike Kontrolü (Rolling Memory Motoru)**
   * Şirket unvanları normalize edilir (A.Ş., Ltd. ekleri silinir). Satış ekibine aynı listenin gitmemesi için, son 30 gün içinde gönderilen firmalar tespit edilip yeni listeden çıkarılır.
 * **Adım 5: Raporlama ve Dağıtım (Reporting & Distribution)**
-  * Özel formatlanmış 5 sütunlu Excel tablosu oluşturulur ve paydaşlara güvenli SMTP bağlantısıyla iletilir.
+  * Özel formatlanmış Excel tablosu oluşturulur ve ekibe güvenli SMTP bağlantısıyla iletilir.
 
 ---
 
