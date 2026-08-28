@@ -79,7 +79,7 @@ Sistem tamamen sunucusuz (serverless) bir yapıda, her Cuma günü Türkiye saat
 
 ### 5.3. `enricher.py` — Otonom Veri Zenginleştirme
 * **Amaç:** İlan metninde telefon numarası veya merkez şehri yazmayan şirketleri eksiksiz hale getirmek.
-* **Teknik Çözüm:** Eksik verisi olan her şirket için ikincil bir alt arama tetiklenir. Google Kurumsal İşletme Kartları (Google Knowledge Graph) taranarak şirketin resmi müşteri hizmetleri/santral numarası ve genel merkez ili bulunarak tabloya eklenir.
+* **Teknik Çözüm:** Eksik verisi olan her şirket için ikincil bir alt arama tetiklenir. Google Knowledge Graph kullanarak şirketin resmi müşteri hizmetleri/santral numarası ve genel merkez ili bulunarak tabloya eklenir.
 
 ### 5.4. `database.py` — 30 Günlük Döngüsel Hafıza ve Normalizasyon
 * **Amaç:** Aynı şirketin her hafta tekrar tekrar raporlanmasını önlemek.
