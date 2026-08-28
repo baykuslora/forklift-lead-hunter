@@ -105,8 +105,6 @@ Sistem tamamen sunucusuz (serverless) bir yapıda, her Cuma günü Türkiye saat
 
 ---
 
----
-
 ## 🔒 6. Güvenlik Standartları (DevSecOps)
 
 Sistem mimarisi kurumsal veri güvenliği standartlarına tam uyumlu olarak tasarlanmıştır:
