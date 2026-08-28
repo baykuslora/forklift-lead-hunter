@@ -12,17 +12,24 @@
 
 ---
 
+# 🚜 B2B Lead Hunter: Otonom Pazar Analizi ve Lead Intelligence Pipeline
+
+> **Yapay Zeka Destekli, Sunucusuz (Serverless) B2B Satış Geliştirme Otomasyonu**
+> Hiring Intent (işe alım niyeti) verilerini satış fırsatlarına dönüştüren uçtan uca B2B Lead Pipeline sistemi.
+
+---
+
 ## 🎯 1. Yönetici Özeti (TL;DR)
 
-Bu proje; intralojistik, istifleme teknolojileri ve endüstriyel depo ekipmanları sektöründe faaliyet gösteren kurumsal firmaları tespit etmek amacıyla geliştirilmiş uçtan uca otonom bir veri hattıdır (Data Pipeline). 
+Bu proje; kendi bünyesinde lojistik, depolama veya üretim operasyonları yürüten ve endüstriyel istifleme makinelerine (forklift, reach truck vb.) aktif olarak ihtiyaç duyan potansiyel kurumsal müşterileri tespit etmek amacıyla geliştirilmiş uçtan uca otonom bir veri hattıdır (Data Pipeline). 
 
-Sistem; kariyer platformlarındaki istihdam hareketlerini (Hiring Intent) tarayarak potansiyel müşterileri bulur, ham veriyi **Google Gemini LLM** ile analiz edip temizler, eksik merkez telefon ve lokasyon bilgilerini otonom olarak zenginleştirir (Data Enrichment). Ardından 30 günlük döngüsel veritabanı ile tekilleştirip, her hafta ilgili paydaşlara kurumsal Excel formatında otomatik raporlar.
+Sistem; kariyer platformlarındaki istihdam hareketlerini (Hiring Intent) tarayarak makine ihtiyacı doğan müşterileri bulur, ham veriyi **Google Gemini LLM** ile analiz edip temizler, eksik merkez telefon ve lokasyon bilgilerini otonom olarak zenginleştirir (Data Enrichment). Ardından 30 günlük döngüsel veritabanı ile tekilleştirip, her hafta ilgili paydaşlara kurumsal Excel formatında otomatik raporlar.
 
 ---
 
 ## ⚖️ 2. Problem ve Çözüm (Neden Geliştirildi?)
 
-B2B satış ve iş geliştirme süreçlerinde bir şirketin "Forklift Operatörü" veya "Depo Elemanı" araması, o şirketin depo hacmini büyüttüğüne veya yeni bir lojistik yatırımına gittiğine dair **en güçlü Intent Data (Satın Alma Niyeti Verisi)** niteliğindedir.
+B2B satış ve iş geliştirme süreçlerinde bir şirketin "Forklift Operatörü" veya "Depo Elemanı" araması, o şirketin depo hacmini büyüttüğüne, yeni bir tesise geçtiğine veya mevcut makine filosunu genişlettiğine dair **en güçlü Intent Data (Satın Alma Niyeti Verisi)** niteliğindedir.
 
 | Geleneksel Süreç (Manuel Araştırma) | Otonom Sistem (B2B Lead Hunter) |
 | :--- | :--- |
@@ -79,7 +86,7 @@ Sistem tamamen sunucusuz (serverless) bir yapıda, her Cuma günü Türkiye saat
 ## 🔒 6. Güvenlik Standartları (DevSecOps)
 
 Sistem mimarisi kurumsal veri güvenliği standartlarına tam uyumlu olarak tasarlanmıştır:
-* Sıfır Açık Metin (Zero Hardcoding): Kod tabanının hiçbir yerinde API anahtarları, şifreler veya e-posta adresleri bulunmaz.
+* **Sıfır Açık Metin (Zero Hardcoding):** Kod tabanının hiçbir yerinde API anahtarları, şifreler veya e-posta adresleri bulunmaz.
 * Tüm hassas veriler **GitHub Encrypted Secrets** kasasında şifreli olarak saklanır ve sadece çalışma anında sisteme (Environment Variables olarak) dahil edilir.
 
 ---
@@ -90,3 +97,4 @@ Sistem mimarisi kurumsal veri güvenliği standartlarına tam uyumlu olarak tasa
 * 🎯 **%100 Doğrulanmış Lead (Qualified Leads):** AI destekli anlamsal ayrıştırma sayesinde satış ekibine giden veri havuzundaki gürültü tamamen yok edildi.
 * 📞 **Satışa Hazır Pipeline (Sales-Ready Data):** Zenginleştirilmiş iletişim bilgileri ile satış ekibinin pazar araştırması yapmadan doğrudan cold-call (soğuk arama) yapabileceği bir standart yakalandı.
 * 💰 **Sıfır Maliyet:** Sunucu veya bulut makine kiralamak yerine GitHub Actions kullanılarak tamamen masrafsız ve sürdürülebilir bir altyapı kuruldu.
+ulut makine kiralamak yerine GitHub Actions kullanılarak tamamen masrafsız ve sürdürülebilir bir altyapı kuruldu.
