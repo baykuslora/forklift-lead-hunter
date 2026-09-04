@@ -25,6 +25,10 @@ class LeadDatabase:
             conn.commit()
 
     def filter_and_save(self, raw_leads, retention_days=30):
+        """
+        Son 30 gün içinde kaydedilmemiş ve URL'si mükerrer olmayan 
+        yeni firmaları veritabanına ekler ve sadece bu haftanın YENİ lead'lerini döner.
+        """
         cutoff = datetime.now() - timedelta(days=retention_days)
         new_leads = []
 
@@ -64,6 +68,10 @@ class LeadDatabase:
         return new_leads
 
     def get_all_active_leads(self, retention_days=30):
+        """
+        Son 30 güne ait duplike olmayan tüm kurumsal lead'leri 
+        kümülatif Excel raporu için veritabanından çeker.
+        """
         cutoff = datetime.now() - timedelta(days=retention_days)
         active_leads = []
 
